@@ -1,21 +1,41 @@
 import { useState, useEffect, useCallback } from "react";
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
 
-const DB_KEY = "gtd_v1";
-const db = {
-  load: () => { try { return JSON.parse(localStorage.getItem(DB_KEY) || "{}"); } catch { return {}; } },
-  save: (s) => localStorage.setItem(DB_KEY, JSON.stringify(s)),
-  all: () => Object.values(db.load()),
-  put: (doc) => {
-    const s = db.load();
-    const id = doc._id || `${doc.type}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-    s[id] = { ...s[id], ...doc, _id: id, updatedAt: Date.now() };
-    db.save(s); return s[id];
-  },
-  del: (id) => { const s = db.load(); delete s[id]; db.save(s); },
-  export: () => JSON.stringify(db.load(), null, 2),
-  import: (raw) => { try { db.save(JSON.parse(raw)); return true; } catch { return false; } },
+// ── FIREBASE CONFIG ──────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyAB7D1VRQrKctK89JWo3_PwbewdYqdcJGw",
+  authDomain: "gtd-personal-ac5a9.firebaseapp.com",
+  projectId: "gtd-personal-ac5a9",
+  storageBucket: "gtd-personal-ac5a9.firebasestorage.app",
+  messagingSenderId: "680306083832",
+  appId: "1:680306083832:web:ecf08e75dec1a4b1d3f80d"
 };
 
+const firebaseApp = initializeApp(firebaseConfig);
+const firestore = getFirestore(firebaseApp);
+const COLL = "gtd_items";
+
+// ── FIRESTORE DB HELPERS ─────────────────────────────────────────────────────
+const db = {
+  put: async (doc_data) => {
+    const id = doc_data._id || `${doc_data.type}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    const ref = doc(firestore, COLL, id);
+    await setDoc(ref, { ...doc_data, _id: id, updatedAt: Date.now() }, { merge: true });
+    return id;
+  },
+  del: async (id) => {
+    await deleteDoc(doc(firestore, COLL, id));
+  },
+  listen: (callback) => {
+    return onSnapshot(collection(firestore, COLL), (snap) => {
+      const items = snap.docs.map(d => d.data());
+      callback(items);
+    });
+  },
+};
+
+// ── CONSTANTS ────────────────────────────────────────────────────────────────
 const BUCKETS = [
   { id: "inbox",   label: "Capturar",    icon: "📥", color: "#818cf8", desc: "Todo lo que llega a tu mente" },
   { id: "next",    label: "Next Action", icon: "⚡", color: "#fbbf24", desc: "Acciones físicas concretas" },
@@ -40,6 +60,7 @@ const getAllTags = (items) => {
   return [...set].sort();
 };
 
+// ── STYLES ───────────────────────────────────────────────────────────────────
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -50,7 +71,9 @@ const css = `
   .topbar { position: sticky; top: 0; z-index: 100; background: rgba(8,8,16,0.9); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.05); height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
   .logo { font-size: 19px; font-weight: 800; letter-spacing: -1px; color: #fff; }
   .logo span { color: #818cf8; }
-  .topbar-btns { display: flex; gap: 6px; }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 6px #34d399; }
+  .sync-dot.off { background: #f87171; box-shadow: 0 0 6px #f87171; }
+  .topbar-btns { display: flex; gap: 6px; align-items: center; }
   .topbtn { background: transparent; border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; color: #666; padding: 5px 11px; font-size: 12px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
   .topbtn.active { background: rgba(129,140,248,0.15); border-color: rgba(129,140,248,0.3); color: #818cf8; }
   .nav { display: flex; gap: 4px; overflow-x: auto; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); scrollbar-width: none; }
@@ -122,8 +145,10 @@ const css = `
   .info-block { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; padding: 14px; margin-bottom: 12px; font-size: 12px; color: #555; line-height: 1.9; }
   .info-block strong { color: #aaa; }
   input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
+  .loading { display: flex; align-items: center; justify-content: center; height: 100vh; background: #080810; color: #333; font-size: 14px; font-family: 'Bricolage Grotesque', sans-serif; }
 `;
 
+// ── ITEM FORM ────────────────────────────────────────────────────────────────
 function ItemForm({ item, projects, allItems, defaultBucket, onSave, onDelete, onClose }) {
   const [f, setF] = useState({
     title: item?.title || "",
@@ -137,12 +162,8 @@ function ItemForm({ item, projects, allItems, defaultBucket, onSave, onDelete, o
     hashtags: item?.hashtags || "",
   });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-
   const existingTags = getAllTags(allItems).filter(t => !parseHashtags(f.hashtags).includes(t));
-  const addTag = (tag) => {
-    const cur = f.hashtags.trim();
-    set("hashtags", cur ? `${cur} ${tag}` : tag);
-  };
+  const addTag = (tag) => { const cur = f.hashtags.trim(); set("hashtags", cur ? `${cur} ${tag}` : tag); };
 
   return (
     <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -151,29 +172,25 @@ function ItemForm({ item, projects, allItems, defaultBucket, onSave, onDelete, o
           <span className="modal-title">{item ? "Editar entrada" : "Nueva entrada"}</span>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
-
         <label className="field-label">Título *</label>
         <input className="inp" placeholder="¿Qué tienes en mente?" value={f.title}
           onChange={e => set("title", e.target.value)} autoFocus />
-
         <label className="field-label">Bandeja</label>
         <div className="chip-row">
           {BUCKETS.map(b => (
-            <button key={b.id} className={`chip${f.bucket === b.id ? " on" : ""}`}
+            <button key={b.id} className={`chip${f.bucket===b.id?" on":""}`}
               style={{"--cc":`${b.color}20`,"--cb":`${b.color}50`,"--ct":b.color}}
               onClick={() => set("bucket", b.id)}>{b.icon} {b.label}</button>
           ))}
         </div>
-
         <label className="field-label">Prioridad</label>
         <div className="chip-row">
           {PRIORITIES.map(p => (
-            <button key={p.id} className={`chip${f.priority === p.id ? " on" : ""}`}
+            <button key={p.id} className={`chip${f.priority===p.id?" on":""}`}
               style={{"--cc":`${p.color}20`,"--cb":`${p.color}50`,"--ct":p.color}}
               onClick={() => set("priority", p.id)}>{p.label}</button>
           ))}
         </div>
-
         {projects.length > 0 && <>
           <label className="field-label">Proyecto (opcional)</label>
           <select className="inp" value={f.projectId} onChange={e => set("projectId", e.target.value)}>
@@ -181,39 +198,31 @@ function ItemForm({ item, projects, allItems, defaultBucket, onSave, onDelete, o
             {projects.map(p => <option key={p._id} value={p._id}>{p.title}</option>)}
           </select>
         </>}
-
         {f.bucket === "agenda" && <>
           <label className="field-label">Fecha</label>
           <input className="inp" type="date" value={f.dueDate} onChange={e => set("dueDate", e.target.value)} />
         </>}
-
         {f.bucket === "waiting" && <>
           <label className="field-label">Esperando a</label>
           <input className="inp" placeholder="Nombre o empresa..." value={f.waitingFor}
             onChange={e => set("waitingFor", e.target.value)} />
         </>}
-
         <label className="field-label">Contexto</label>
         <input className="inp" placeholder="@casa  @oficina  @llamadas..." value={f.context}
           onChange={e => set("context", e.target.value)} />
-
         <label className="field-label">Hashtags</label>
-        <input className="inp" placeholder="#deep-work  #energia-alta  #15min  #revisión..."
+        <input className="inp" placeholder="#deep-work  #energia-alta  #15min..."
           value={f.hashtags} onChange={e => set("hashtags", e.target.value)}
-          style={{fontFamily:"'DM Mono', monospace", fontSize: 13}} />
+          style={{fontFamily:"'DM Mono',monospace",fontSize:13}} />
         {existingTags.length > 0 && (
           <div className="tag-suggestions">
             <span style={{fontSize:10,color:"#333",marginRight:2}}>usar:</span>
-            {existingTags.map(t => (
-              <button key={t} className="tag-sug" onClick={() => addTag(t)}>{t}</button>
-            ))}
+            {existingTags.map(t => <button key={t} className="tag-sug" onClick={() => addTag(t)}>{t}</button>)}
           </div>
         )}
-
         <label className="field-label">Notas</label>
         <textarea className="inp" placeholder="Detalles, links, contexto adicional..."
           value={f.notes} onChange={e => set("notes", e.target.value)} />
-
         <div className="btn-row">
           {item && <button className="btn btn-danger" onClick={() => { onDelete(item._id); onClose(); }}>Eliminar</button>}
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
@@ -228,6 +237,7 @@ function ItemForm({ item, projects, allItems, defaultBucket, onSave, onDelete, o
   );
 }
 
+// ── PROJECT FORM ─────────────────────────────────────────────────────────────
 function ProjectForm({ project, onSave, onDelete, onClose }) {
   const COLORS = ["#818cf8","#fbbf24","#34d399","#f87171","#a78bfa","#22d3ee","#fb923c","#f472b6"];
   const [f, setF] = useState({
@@ -237,7 +247,6 @@ function ProjectForm({ project, onSave, onDelete, onClose }) {
     color: project?.color || "#818cf8",
   });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-
   return (
     <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box">
@@ -255,7 +264,7 @@ function ProjectForm({ project, onSave, onDelete, onClose }) {
         <div className="color-row">
           {COLORS.map(c => (
             <div key={c} className="color-dot" onClick={() => set("color", c)}
-              style={{background:c, border: f.color===c ? "2px solid #fff" : "2px solid transparent"}} />
+              style={{background:c,border:f.color===c?"2px solid #fff":"2px solid transparent"}} />
           ))}
         </div>
         <label className="field-label">Estado</label>
@@ -280,12 +289,12 @@ function ProjectForm({ project, onSave, onDelete, onClose }) {
   );
 }
 
+// ── ITEM CARD ────────────────────────────────────────────────────────────────
 function ItemCard({ item, projects, onEdit, onMoveTo, onTagClick, activeTag }) {
   const bucket = BUCKETS.find(b => b.id === item.bucket);
   const project = projects.find(p => p._id === item.projectId);
   const priority = PRIORITIES.find(p => p.id === item.priority);
   const tags = parseHashtags(item.hashtags);
-
   return (
     <div className="card" style={{borderLeft:`3px solid ${bucket?.color||"#333"}`}} onClick={() => onEdit(item)}>
       <div className="card-title">{item.title}</div>
@@ -310,6 +319,7 @@ function ItemCard({ item, projects, onEdit, onMoveTo, onTagClick, activeTag }) {
   );
 }
 
+// ── PROJECTS VIEW ─────────────────────────────────────────────────────────────
 function ProjectsView({ projects, items, onEdit, onNew, onNewItem }) {
   return (
     <div>
@@ -324,7 +334,7 @@ function ProjectsView({ projects, items, onEdit, onNew, onNewItem }) {
         </div>
       )}
       {projects.map(p => {
-        const pItems = items.filter(i => i.projectId === p._id && i.bucket !== "archive" && i.bucket !== "trash");
+        const pItems = items.filter(i => i.projectId===p._id && i.bucket!=="archive" && i.bucket!=="trash");
         const sc = p.status==="active"?"#34d399":p.status==="paused"?"#fbbf24":"#94a3b8";
         const sl = p.status==="active"?"Activo":p.status==="paused"?"Pausado":"Completado";
         return (
@@ -346,35 +356,19 @@ function ProjectsView({ projects, items, onEdit, onNew, onNewItem }) {
   );
 }
 
-function SettingsView({ items, projects }) {
-  const [msg, setMsg] = useState("");
+// ── SETTINGS VIEW ─────────────────────────────────────────────────────────────
+function SettingsView({ items, projects, online }) {
   const allTags = getAllTags(items);
-
-  const doExport = () => {
-    const blob = new Blob([db.export()], {type:"application/json"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `gtd_backup_${new Date().toISOString().slice(0,10)}.json`;
-    a.click(); URL.revokeObjectURL(url);
-    setMsg("✅ Backup exportado"); setTimeout(() => setMsg(""), 3000);
-  };
-
-  const doImport = () => {
-    const input = document.createElement("input");
-    input.type = "file"; input.accept = ".json";
-    input.onchange = e => {
-      const reader = new FileReader();
-      reader.onload = ev => {
-        if (db.import(ev.target.result)) { setMsg("✅ Importado. Recargando..."); setTimeout(() => window.location.reload(), 1500); }
-        else setMsg("❌ Error al importar");
-      };
-      reader.readAsText(e.target.files[0]);
-    };
-    input.click();
-  };
-
   return (
     <div>
+      <div className="section-label">Estado de sincronización</div>
+      <div className="info-block" style={{marginBottom:16}}>
+        <span style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:online?"#34d399":"#f87171",boxShadow:`0 0 6px ${online?"#34d399":"#f87171"}`,display:"inline-block"}}></span>
+          {online ? "✅ Conectado a Firebase — tus datos sincronizan en tiempo real entre todos tus dispositivos." : "❌ Sin conexión — los cambios se guardarán cuando vuelvas a conectarte."}
+        </span>
+      </div>
+
       <div className="section-label">Resumen</div>
       <div className="stats-grid">
         {BUCKETS.map(b => (
@@ -401,23 +395,11 @@ function SettingsView({ items, projects }) {
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:20}}>
           {allTags.map(t => (
             <span key={t} className="hashtag" style={{cursor:"default"}}>
-              {t}<span style={{marginLeft:5,opacity:0.5,fontFamily:"'DM Mono',monospace"}}>
-                {items.filter(i=>parseHashtags(i.hashtags).includes(t)).length}
-              </span>
+              {t}<span style={{marginLeft:5,opacity:0.5}}>{items.filter(i=>parseHashtags(i.hashtags).includes(t)).length}</span>
             </span>
           ))}
         </div>
       </>}
-
-      <div className="section-label">Backup</div>
-      <div className="info-block" style={{marginBottom:10}}>
-        Datos guardados localmente en este dispositivo. Exporta un backup regularmente.
-      </div>
-      <div className="btn-row" style={{marginBottom:20}}>
-        <button className="btn btn-ghost" onClick={doExport}>⬇ Exportar JSON</button>
-        <button className="btn btn-ghost" onClick={doImport}>⬆ Importar JSON</button>
-      </div>
-      {msg && <div style={{fontSize:13,color:"#34d399",marginBottom:12}}>{msg}</div>}
 
       <div className="section-label">Metodología GTD</div>
       <div className="info-block">
@@ -433,9 +415,9 @@ function SettingsView({ items, projects }) {
   );
 }
 
+// ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [items, setItems] = useState([]);
-  const [projects, setProjects] = useState([]);
+  const [allDocs, setAllDocs] = useState(null);
   const [view, setView] = useState("bucket");
   const [bucket, setBucket] = useState("inbox");
   const [search, setSearch] = useState("");
@@ -445,41 +427,48 @@ export default function App() {
   const [editItem, setEditItem] = useState(null);
   const [editProj, setEditProj] = useState(null);
   const [newItemProjId, setNewItemProjId] = useState("");
+  const [online, setOnline] = useState(navigator.onLine);
 
-  const reload = useCallback(() => {
-    const all = db.all();
-    setItems(all.filter(d=>d.type==="item").sort((a,b)=>b.updatedAt-a.updatedAt));
-    setProjects(all.filter(d=>d.type==="project").sort((a,b)=>b.updatedAt-a.updatedAt));
+  useEffect(() => {
+    const unsub = db.listen(docs => setAllDocs(docs));
+    const onOnline = () => setOnline(true);
+    const onOffline = () => setOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => { unsub(); window.removeEventListener("online", onOnline); window.removeEventListener("offline", onOffline); };
   }, []);
 
-  useEffect(() => { reload(); }, [reload]);
+  if (allDocs === null) return <div className="loading">Cargando GTD...</div>;
 
-  const saveItem = doc => { db.put(doc); reload(); };
-  const saveProj = doc => { db.put(doc); reload(); };
-  const delItem = id => { db.del(id); reload(); };
-  const delProj = id => {
-    db.all().filter(d=>d.type==="item"&&d.projectId===id).forEach(i=>db.put({...i,projectId:""}));
-    db.del(id); reload();
+  const items = allDocs.filter(d => d.type === "item").sort((a,b) => b.updatedAt - a.updatedAt);
+  const projects = allDocs.filter(d => d.type === "project").sort((a,b) => b.updatedAt - a.updatedAt);
+
+  const saveItem = async (doc_data) => { await db.put(doc_data); };
+  const saveProj = async (doc_data) => { await db.put(doc_data); };
+  const delItem = async (id) => { await db.del(id); };
+  const delProj = async (id) => {
+    const toUpdate = allDocs.filter(d => d.type==="item" && d.projectId===id);
+    for (const i of toUpdate) await db.put({ ...i, projectId: "" });
+    await db.del(id);
   };
-  const moveTo = (id, nb) => {
-    const item = db.all().find(d=>d._id===id);
-    if (item) { db.put({...item,bucket:nb}); reload(); }
+  const moveTo = async (id, nb) => {
+    const item = allDocs.find(d => d._id === id);
+    if (item) await db.put({ ...item, bucket: nb });
   };
   const handleTagClick = tag => { setActiveTag(p => p===tag?"":tag); setSearch(""); };
 
-  const bkt = BUCKETS.find(b=>b.id===bucket);
+  const bkt = BUCKETS.find(b => b.id === bucket);
   const visible = items.filter(i => {
     if (view !== "bucket") return false;
     if (i.bucket !== bucket) return false;
     if (activeTag && !parseHashtags(i.hashtags).includes(activeTag)) return false;
     if (search) {
       const q = search.toLowerCase();
-      if (!i.title.toLowerCase().includes(q) && !i.notes?.toLowerCase().includes(q) &&
+      if (!i.title?.toLowerCase().includes(q) && !i.notes?.toLowerCase().includes(q) &&
           !i.hashtags?.toLowerCase().includes(q) && !i.context?.toLowerCase().includes(q)) return false;
     }
     return true;
   });
-
   const bucketTags = [...new Set(items.filter(i=>i.bucket===bucket).flatMap(i=>parseHashtags(i.hashtags)))].sort();
 
   return (
@@ -489,6 +478,7 @@ export default function App() {
         <div className="topbar">
           <div className="logo">GTD<span>.</span></div>
           <div className="topbar-btns">
+            <div className={`sync-dot${online?"":" off"}`} title={online?"Sincronizado":"Sin conexión"} />
             <button className={`topbtn${view==="projects"?" active":""}`} onClick={() => setView("projects")}>📁 Proyectos</button>
             <button className={`topbtn${view==="settings"?" active":""}`} onClick={() => setView("settings")}>⚙️</button>
           </div>
@@ -531,7 +521,7 @@ export default function App() {
               {visible.length === 0 && (
                 <div className="empty">
                   <div className="empty-icon">{bkt?.icon}</div>
-                  <div className="empty-text">{(search||activeTag) ? "Sin resultados para ese filtro" : "Esta bandeja está vacía"}</div>
+                  <div className="empty-text">{(search||activeTag)?"Sin resultados para ese filtro":"Esta bandeja está vacía"}</div>
                 </div>
               )}
               {visible.map(item => (
@@ -547,7 +537,7 @@ export default function App() {
               onNew={() => { setEditProj(null); setShowProj(true); }}
               onNewItem={pid => { setEditItem(null); setNewItemProjId(pid); setShowItem(true); }} />
           )}
-          {view === "settings" && <SettingsView items={items} projects={projects} />}
+          {view === "settings" && <SettingsView items={items} projects={projects} online={online} />}
         </div>
 
         {view !== "settings" && (
@@ -557,7 +547,7 @@ export default function App() {
         {showItem && (
           <ItemForm item={editItem} projects={projects} allItems={items}
             defaultBucket={view==="bucket"?bucket:"inbox"}
-            onSave={doc => { if (newItemProjId && !doc.projectId) doc.projectId = newItemProjId; saveItem(doc); }}
+            onSave={async doc_data => { if (newItemProjId && !doc_data.projectId) doc_data.projectId = newItemProjId; await saveItem(doc_data); }}
             onDelete={delItem}
             onClose={() => { setShowItem(false); setEditItem(null); setNewItemProjId(""); }} />
         )}
