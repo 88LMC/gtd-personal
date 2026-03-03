@@ -237,7 +237,96 @@ const css = `
   .divider { border: none; border-top: 1px solid #f1f5f9; margin: 14px 0; }
   input[type=date]::-webkit-calendar-picker-indicator { cursor: pointer; }
   .loading { display: flex; align-items: center; justify-content: center; height: 100vh; background: #f8f9fc; color: #94a3b8; font-size: 14px; font-family: 'Bricolage Grotesque', sans-serif; gap: 10px; }
+
+  /* GLOBAL SEARCH */
+  .gsearch-wrap { flex: 1; max-width: 340px; position: relative; }
+  .gsearch-inp { width: 100%; background: #f1f5f9; border: 1px solid #e4e7ef; border-radius: 9px; color: #1e293b; font-family: 'DM Mono', monospace; font-size: 12px; padding: 7px 12px 7px 32px; outline: none; transition: all 0.15s; }
+  .gsearch-inp:focus { background: #fff; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+  .gsearch-inp::placeholder { color: #cbd5e1; }
+  .gsearch-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 13px; pointer-events: none; }
+  .gsearch-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: #e4e7ef; border: none; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 10px; color: #64748b; }
+  .gsearch-clear:hover { background: #cbd5e1; }
+
+  /* SEARCH RESULTS VIEW */
+  .search-results { }
+  .search-results-header { font-size: 12px; color: #94a3b8; margin-bottom: 14px; font-family: 'DM Mono', monospace; }
+  .search-bucket-group { margin-bottom: 16px; }
+  .search-bucket-label { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #94a3b8; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9; }
+  .search-highlight { background: #fef9c3; border-radius: 2px; padding: 0 1px; }
 `;
+
+
+// ── HIGHLIGHT HELPER ──────────────────────────────────────────────────────────
+function Highlight({ text = "", query = "" }) {
+  if (!query.trim()) return <>{text}</>;
+  const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, "gi"));
+  return <>{parts.map((p, i) => p.toLowerCase() === query.toLowerCase()
+    ? <mark key={i} className="search-highlight">{p}</mark> : p)}</>;
+}
+
+// ── GLOBAL SEARCH RESULTS ─────────────────────────────────────────────────────
+function GlobalSearchResults({ query, items, projects, onEdit }) {
+  const q = query.toLowerCase().trim();
+  if (!q) return null;
+
+  const matched = items.filter(i => {
+    return (
+      i.title?.toLowerCase().includes(q) ||
+      i.notes?.toLowerCase().includes(q) ||
+      i.hashtags?.toLowerCase().includes(q) ||
+      i.context?.toLowerCase().includes(q) ||
+      i.waitingFor?.toLowerCase().includes(q)
+    );
+  });
+
+  const grouped = BUCKETS.map(b => ({
+    bucket: b,
+    items: matched.filter(i => i.bucket === b.id),
+  })).filter(g => g.items.length > 0);
+
+  if (matched.length === 0) return (
+    <div className="search-results">
+      <div className="search-results-header">0 resultados para "{query}"</div>
+      <div className="empty"><div className="empty-icon">🔍</div><div className="empty-text">Sin resultados</div></div>
+    </div>
+  );
+
+  return (
+    <div className="search-results">
+      <div className="search-results-header">{matched.length} resultado{matched.length !== 1 ? "s" : ""} para "{query}"</div>
+      {grouped.map(({ bucket: b, items: gItems }) => (
+        <div key={b.id} className="search-bucket-group">
+          <div className="search-bucket-label" style={{color: b.color}}>
+            {b.icon} {b.label} <span style={{background:`${b.color}15`,border:`1px solid ${b.color}30`,borderRadius:8,padding:"0 6px",fontFamily:"inherit"}}>{gItems.length}</span>
+          </div>
+          {gItems.map(item => {
+            const project = projects.find(p => p._id === item.projectId);
+            const priority = PRIORITIES.find(p => p.id === item.priority);
+            const diff = getDaysInfo(item.dueDate);
+            return (
+              <div key={item._id} className="card" style={{borderLeft:`3px solid ${b.color}`}} onClick={() => onEdit(item)}>
+                <div className="card-title"><Highlight text={item.title} query={q} /></div>
+                <div className="card-meta">
+                  {item.dueDate && <DaysTag dueDate={item.dueDate} />}
+                  {priority && <span className="pill" style={{background:`${priority.color}15`,color:priority.color,border:`1px solid ${priority.color}40`}}>{priority.label}</span>}
+                  {project && <span className="pill" style={{background:`${project.color||"#6366f1"}15`,color:project.color||"#6366f1",border:`1px solid ${project.color||"#6366f1"}40`}}>📁 {project.title}</span>}
+                  {item.context && <span style={{fontSize:10,color:"#6366f1",fontFamily:"'DM Mono',monospace"}}><Highlight text={item.context} query={q} /></span>}
+                  {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ <Highlight text={item.waitingFor} query={q} /></span>}
+                  {parseHashtags(item.hashtags).map(t => (
+                    <span key={t} className="hashtag" style={{cursor:"default"}}><Highlight text={t} query={q} /></span>
+                  ))}
+                  {item.notes && item.notes.toLowerCase().includes(q) && (
+                    <span style={{fontSize:10,color:"#94a3b8",fontStyle:"italic"}}>· en notas</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ── CAPTURE MODAL ─────────────────────────────────────────────────────────────
 function CaptureModal({ onSave, onClose }) {
@@ -755,6 +844,8 @@ export default function App() {
   const [bucket, setBucket] = useState("inbox");
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState("");
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
   const [showCapture, setShowCapture] = useState(false);
   const [showProcess, setShowProcess] = useState(false);
   const [showProj, setShowProj] = useState(false);
@@ -800,11 +891,22 @@ export default function App() {
         {/* TOPBAR */}
         <div className="topbar">
           <div className="logo">GTD<span>.</span></div>
+          <div className="gsearch-wrap">
+            <span className="gsearch-icon">🔍</span>
+            <input className="gsearch-inp"
+              placeholder="Buscar título, #hashtag, @contexto, responsable..."
+              value={globalSearch}
+              onChange={e => setGlobalSearch(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onKeyDown={e => e.key === "Escape" && setGlobalSearch("")}
+            />
+            {globalSearch && <button className="gsearch-clear" onClick={() => setGlobalSearch("")}>✕</button>}
+          </div>
           <div className="topbar-right">
             <div className={`sync-dot${online?"":" off"}`} title={online?"Sincronizado":"Sin conexión"} />
-            <button className={`topbtn${view==="dashboard"?" active":""}`} onClick={() => setView("dashboard")}>🏠 Dashboard</button>
-            <button className={`topbtn${view==="projects"?" active":""}`} onClick={() => setView("projects")}>📁</button>
-            <button className={`topbtn${view==="settings"?" active":""}`} onClick={() => setView("settings")}>⚙️</button>
+            <button className={`topbtn${view==="dashboard"?" active":""}`} onClick={() => { setView("dashboard"); setGlobalSearch(""); }}>🏠</button>
+            <button className={`topbtn${view==="projects"?" active":""}`} onClick={() => { setView("projects"); setGlobalSearch(""); }}>📁</button>
+            <button className={`topbtn${view==="settings"?" active":""}`} onClick={() => { setView("settings"); setGlobalSearch(""); }}>⚙️</button>
           </div>
         </div>
 
@@ -826,24 +928,25 @@ export default function App() {
 
         {/* MAIN */}
         <div className="main">
-          {view === "dashboard" && (
+          {globalSearch.trim() ? (
+            <GlobalSearchResults query={globalSearch} items={items} projects={projects} onEdit={openEdit} />
+          ) : view === "dashboard" ? (
             <Dashboard items={items} projects={projects} onEdit={openEdit}
               onNewItem={() => { setEditItem(null); setShowProcess(true); }}
               onCapture={() => setShowCapture(true)} />
-          )}
-          {view === "bucket" && (
+          ) : view === "bucket" ? (
             <BucketView bucket={bucket} items={items} projects={projects} allItems={items}
               onEdit={openEdit} onMoveTo={moveTo} onTagClick={handleTagClick}
               activeTag={activeTag} search={search} setSearch={setSearch} setActiveTag={setActiveTag}
               unprocessed={unprocessed} />
-          )}
-          {view === "projects" && (
+          ) : view === "projects" ? (
             <ProjectsView projects={projects} items={items}
               onEdit={p => { setEditProj(p); setShowProj(true); }}
               onNew={() => { setEditProj(null); setShowProj(true); }}
               onNewItem={pid => { setEditItem(null); setNewItemProjId(pid); setShowProcess(true); }} />
-          )}
-          {view === "settings" && <SettingsView items={items} projects={projects} online={online} />}
+          ) : view === "settings" ? (
+            <SettingsView items={items} projects={projects} online={online} />
+          ) : null}
         </div>
 
         {/* FAB */}
