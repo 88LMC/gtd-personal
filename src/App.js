@@ -436,10 +436,19 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
           </div>
           {projects.length > 0 && <>
             <label className="field-label">Proyecto</label>
-            <select className="inp" value={f.projectId} onChange={e => set("projectId", e.target.value)}>
-              <option value="">— Sin proyecto —</option>
-              {projects.map(p => <option key={p._id} value={p._id}>{p.title}</option>)}
-            </select>
+            <div className="chip-row" style={{flexWrap:"wrap"}}>
+              <button className={`chip${!f.projectId?" on":""}`}
+                style={{"--cc":"#f1f5f9","--cb":"#e4e7ef","--ct":"#64748b"}}
+                onClick={() => set("projectId", "")}>Sin proyecto</button>
+              {projects.filter(p => p.status !== "done").map(p => (
+                <button key={p._id} className={`chip${f.projectId===p._id?" on":""}`}
+                  style={{"--cc":`${p.color||"#6366f1"}18`,"--cb":`${p.color||"#6366f1"}50`,"--ct":p.color||"#6366f1"}}
+                  onClick={() => set("projectId", p._id)}>
+                  <span style={{display:"inline-block",width:7,height:7,borderRadius:"50%",background:p.color||"#6366f1",marginRight:5}} />
+                  {p.title}
+                </button>
+              ))}
+            </div>
           </>}
           <label className="field-label">Contexto</label>
           <input className="inp" placeholder="@casa  @oficina  @llamadas..."
@@ -800,8 +809,183 @@ function SettingsView({ items, projects, online }) {
   );
 }
 
+// ── PROJECT MINI DASHBOARD ────────────────────────────────────────────────────
+function ProjectDashboard({ project, items, onEdit, onNewItem, onBack }) {
+  const pItems = items.filter(i => i.projectId === project._id);
+  const agenda = pItems.filter(i => i.bucket === "agenda" && i.processed)
+    .sort((a,b) => (getDaysInfo(b.dueDate)??-9999) - (getDaysInfo(a.dueDate)??-9999));
+  const next = pItems.filter(i => i.bucket === "next" && i.processed)
+    .sort((a,b) => ({high:0,med:1,low:2}[a.priority]||1) - ({high:0,med:1,low:2}[b.priority]||1));
+  const waiting = pItems.filter(i => i.bucket === "waiting" && i.processed);
+  const done = pItems.filter(i => i.bucket === "archive").length;
+  const overdue = agenda.filter(i => getDaysInfo(i.dueDate) > 0).length;
+  const color = project.color || "#6366f1";
+  const sc = project.status==="active"?"#059669":project.status==="paused"?"#d97706":"#64748b";
+  const sl = project.status==="active"?"Activo":project.status==="paused"?"Pausado":"Completado";
+  const total = pItems.filter(i => i.bucket !== "trash").length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  return (
+    <div>
+      {/* BACK + HEADER */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+        <button className="small-btn" onClick={onBack} style={{padding:"6px 12px"}}>← Proyectos</button>
+      </div>
+
+      {/* PROJECT HEADER CARD */}
+      <div style={{background:"#fff",border:`1px solid #e4e7ef`,borderLeft:`4px solid ${color}`,borderRadius:14,padding:"16px 18px",marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+          <div>
+            <div style={{fontSize:20,fontWeight:800,color:"#1e293b",letterSpacing:-0.5,marginBottom:4}}>{project.title}</div>
+            {project.description && <div style={{fontSize:12,color:"#64748b",lineHeight:1.6}}>{project.description}</div>}
+          </div>
+          <span className="pill" style={{background:`${sc}15`,color:sc,border:`1px solid ${sc}40`,flexShrink:0,marginLeft:12}}>{sl}</span>
+        </div>
+        {/* PROGRESS BAR */}
+        <div style={{marginTop:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <span style={{fontSize:10,color:"#94a3b8",fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase"}}>Progreso</span>
+            <span style={{fontSize:11,fontWeight:700,color:color}}>{pct}% · {done}/{total} tareas</span>
+          </div>
+          <div style={{height:6,background:"#f1f5f9",borderRadius:4,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${pct}%`,background:color,borderRadius:4,transition:"width 0.4s ease"}} />
+          </div>
+        </div>
+        {/* MINI STATS */}
+        <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
+          {[["📅",agenda.length,"Agenda","#059669"],["⚡",next.length,"Next","#d97706"],["⏳",waiting.length,"Waiting","#7c3aed"],["✅",done,"Hechas","#64748b"]].map(([icon,n,lbl,c]) => (
+            <div key={lbl} style={{background:`${c}0d`,border:`1px solid ${c}25`,borderRadius:8,padding:"6px 12px",textAlign:"center",flex:1,minWidth:60}}>
+              <div style={{fontSize:14}}>{icon}</div>
+              <div style={{fontSize:16,fontWeight:800,color:c}}>{n}</div>
+              <div style={{fontSize:9,color:"#94a3b8",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>{lbl}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* OVERDUE ALERT */}
+      {overdue > 0 && (
+        <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:16}}>🚨</span>
+          <span style={{fontSize:12,color:"#991b1b",fontWeight:700}}>{overdue} tarea{overdue>1?"s":""} vencida{overdue>1?"s":""}</span>
+        </div>
+      )}
+
+      {/* GRID */}
+      <div className="dashboard-grid">
+        {/* AGENDA */}
+        <div className="dash-section dash-col-full">
+          <div className="dash-header">
+            <div className="dash-title" style={{color:"#059669"}}>📅 Agenda</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <span className="dash-count">{agenda.length}</span>
+              <button className="small-btn" onClick={() => onNewItem(project._id, "agenda")}>+ Agregar</button>
+            </div>
+          </div>
+          <div className="dash-items">
+            {agenda.length === 0
+              ? <div className="dash-empty">Sin items en agenda</div>
+              : agenda.map(i => <DashItem key={i._id} item={i} projects={[project]} onEdit={onEdit} />)}
+          </div>
+        </div>
+
+        {/* NEXT */}
+        <div className="dash-section">
+          <div className="dash-header">
+            <div className="dash-title" style={{color:"#d97706"}}>⚡ Next Actions</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <span className="dash-count">{next.length}</span>
+              <button className="small-btn" onClick={() => onNewItem(project._id, "next")}>+ Agregar</button>
+            </div>
+          </div>
+          <div className="dash-items">
+            {next.length === 0
+              ? <div className="dash-empty">Sin next actions</div>
+              : next.map(i => <DashItem key={i._id} item={i} projects={[project]} onEdit={onEdit} />)}
+          </div>
+        </div>
+
+        {/* WAITING */}
+        <div className="dash-section">
+          <div className="dash-header">
+            <div className="dash-title" style={{color:"#7c3aed"}}>⏳ Waiting</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <span className="dash-count">{waiting.length}</span>
+              <button className="small-btn" onClick={() => onNewItem(project._id, "waiting")}>+ Agregar</button>
+            </div>
+          </div>
+          <div className="dash-items">
+            {waiting.length === 0
+              ? <div className="dash-empty">Nada esperando</div>
+              : waiting.map(i => <DashItem key={i._id} item={i} projects={[project]} onEdit={onEdit} />)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── PROJECTS VIEW ─────────────────────────────────────────────────────────────
-function ProjectsView({ projects, items, onEdit, onNew, onNewItem }) {
+function ProjectsView({ projects, items, onEdit, onNew, onEditProj, onNewItem }) {
+  const [selectedProject, setSelectedProject] = useState(null);
+
+  // Si hay proyecto seleccionado mostrar su dashboard
+  if (selectedProject) {
+    const proj = projects.find(p => p._id === selectedProject);
+    if (proj) return (
+      <ProjectDashboard
+        project={proj}
+        items={items}
+        onEdit={onEdit}
+        onNewItem={onNewItem}
+        onBack={() => setSelectedProject(null)}
+      />
+    );
+  }
+
+  const active = projects.filter(p => p.status === "active");
+  const paused = projects.filter(p => p.status === "paused");
+  const done = projects.filter(p => p.status === "done");
+
+  const ProjectCard = ({ p }) => {
+    const pItems = items.filter(i => i.projectId === p._id && i.bucket !== "trash");
+    const doneCount = pItems.filter(i => i.bucket === "archive").length;
+    const total = pItems.length;
+    const pct = total > 0 ? Math.round((doneCount/total)*100) : 0;
+    const overdue = pItems.filter(i => i.bucket==="agenda" && getDaysInfo(i.dueDate) > 0).length;
+    const color = p.color || "#6366f1";
+    return (
+      <div className="proj-card" style={{"--pc":color,cursor:"pointer"}} onClick={() => setSelectedProject(p._id)}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+          <div className="proj-title" style={{marginBottom:0}}>{p.title}</div>
+          <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0,marginLeft:10}}>
+            {overdue > 0 && <span style={{fontSize:10,background:"#fef2f2",color:"#dc2626",border:"1px solid #fecaca",borderRadius:4,padding:"1px 6px",fontWeight:700}}>🚨 {overdue}</span>}
+            <button className="small-btn" onClick={e => { e.stopPropagation(); onEditProj(p); }}>✎</button>
+          </div>
+        </div>
+        {p.description && <div className="proj-desc">{p.description}</div>}
+        {/* PROGRESS */}
+        <div style={{marginBottom:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+            <span style={{fontSize:10,color:"#94a3b8"}}>{pct}% completado</span>
+            <span style={{fontSize:10,color:"#94a3b8"}}>{doneCount}/{total}</span>
+          </div>
+          <div style={{height:4,background:"#f1f5f9",borderRadius:4,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${pct}%`,background:color,borderRadius:4}} />
+          </div>
+        </div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {[["📅",pItems.filter(i=>i.bucket==="agenda").length,"Agenda"],
+            ["⚡",pItems.filter(i=>i.bucket==="next").length,"Next"],
+            ["⏳",pItems.filter(i=>i.bucket==="waiting").length,"Waiting"]].map(([icon,n,lbl]) => n > 0 && (
+            <span key={lbl} style={{fontSize:10,color:"#64748b",background:"#f8f9fc",border:"1px solid #e4e7ef",borderRadius:5,padding:"2px 7px"}}>{icon} {n} {lbl}</span>
+          ))}
+          <span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto",alignSelf:"center"}}>Ver dashboard →</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -811,28 +995,21 @@ function ProjectsView({ projects, items, onEdit, onNew, onNewItem }) {
       {projects.length === 0 && (
         <div className="empty">
           <div className="empty-icon">📁</div>
-          <div className="empty-text">Sin proyectos todavía</div>
+          <div className="empty-text">Sin proyectos todavía<br/><span style={{fontSize:11,color:"#cbd5e1"}}>Un proyecto = algo que requiere más de una acción</span></div>
         </div>
       )}
-      {projects.map(p => {
-        const pItems = items.filter(i => i.projectId===p._id && i.bucket!=="archive" && i.bucket!=="trash");
-        const sc = p.status==="active"?"#059669":p.status==="paused"?"#d97706":"#64748b";
-        const sl = p.status==="active"?"Activo":p.status==="paused"?"Pausado":"Completado";
-        return (
-          <div key={p._id} className="proj-card" style={{"--pc":p.color||"#6366f1"}}>
-            <div className="proj-title">{p.title}</div>
-            {p.description && <div className="proj-desc">{p.description}</div>}
-            <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
-              <span className="pill" style={{background:`${sc}15`,color:sc,border:`1px solid ${sc}40`}}>{sl}</span>
-              <span style={{fontSize:10,color:"#94a3b8"}}>{pItems.length} acciones pendientes</span>
-            </div>
-            <div className="proj-actions">
-              <button className="small-btn" onClick={() => onNewItem(p._id)}>+ Acción</button>
-              <button className="small-btn" onClick={() => onEdit(p)}>✎ Editar</button>
-            </div>
-          </div>
-        );
-      })}
+      {active.length > 0 && <>
+        <div className="section-label">Activos</div>
+        {active.map(p => <ProjectCard key={p._id} p={p} />)}
+      </>}
+      {paused.length > 0 && <>
+        <div className="section-label" style={{marginTop:12}}>Pausados</div>
+        {paused.map(p => <ProjectCard key={p._id} p={p} />)}
+      </>}
+      {done.length > 0 && <>
+        <div className="section-label" style={{marginTop:12}}>Completados</div>
+        {done.map(p => <ProjectCard key={p._id} p={p} />)}
+      </>}
     </div>
   );
 }
@@ -941,9 +1118,14 @@ export default function App() {
               unprocessed={unprocessed} />
           ) : view === "projects" ? (
             <ProjectsView projects={projects} items={items}
-              onEdit={p => { setEditProj(p); setShowProj(true); }}
+              onEdit={openEdit}
               onNew={() => { setEditProj(null); setShowProj(true); }}
-              onNewItem={pid => { setEditItem(null); setNewItemProjId(pid); setShowProcess(true); }} />
+              onEditProj={p => { setEditProj(p); setShowProj(true); }}
+              onNewItem={(pid, defaultBucket) => {
+                setEditItem({ projectId: pid, bucket: defaultBucket || "next", processed: false });
+                setNewItemProjId(pid);
+                setShowProcess(true);
+              }} />
           ) : view === "settings" ? (
             <SettingsView items={items} projects={projects} online={online} />
           ) : null}
