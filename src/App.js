@@ -23,32 +23,28 @@ const db = {
     return id;
   },
   del: async (id) => { await deleteDoc(doc(firestore, COLL, id)); },
-  listen: (callback) => {
-    return onSnapshot(collection(firestore, COLL), (snap) => {
-      callback(snap.docs.map(d => d.data()));
-    });
-  },
+  listen: (cb) => onSnapshot(collection(firestore, COLL), snap => cb(snap.docs.map(d => d.data()))),
 };
 
 const BUCKETS = [
-  { id: "inbox",   label: "Capturar",    icon: "📥", color: "#818cf8", desc: "Todo lo que llega a tu mente" },
-  { id: "next",    label: "Next Action", icon: "⚡", color: "#fbbf24", desc: "Acciones físicas concretas" },
-  { id: "agenda",  label: "Agenda",      icon: "📅", color: "#34d399", desc: "Con fecha o persona específica" },
-  { id: "waiting", label: "Waiting",     icon: "⏳", color: "#a78bfa", desc: "Delegado, esperando respuesta" },
-  { id: "archive", label: "Archivar",    icon: "🗄️", color: "#94a3b8", desc: "Referencia o completado" },
-  { id: "trash",   label: "Desechar",    icon: "🗑️", color: "#f87171", desc: "Ya no es relevante" },
+  { id: "inbox",   label: "Capturar",    icon: "📥", color: "#6366f1", desc: "Todo lo que llega a tu mente" },
+  { id: "next",    label: "Next Action", icon: "⚡", color: "#d97706", desc: "Acciones físicas concretas" },
+  { id: "agenda",  label: "Agenda",      icon: "📅", color: "#059669", desc: "Con fecha o persona específica" },
+  { id: "waiting", label: "Waiting",     icon: "⏳", color: "#7c3aed", desc: "Delegado, esperando respuesta" },
+  { id: "archive", label: "Archivar",    icon: "🗄️", color: "#64748b", desc: "Referencia o completado" },
+  { id: "trash",   label: "Desechar",    icon: "🗑️", color: "#dc2626", desc: "Ya no es relevante" },
 ];
 
 const ENERGY = [
-  { id: "high",  label: "⚡ Alta",  color: "#f87171" },
-  { id: "med",   label: "🔆 Media", color: "#fbbf24" },
-  { id: "low",   label: "🌙 Baja",  color: "#34d399" },
+  { id: "high", label: "⚡ Alta",  color: "#dc2626" },
+  { id: "med",  label: "🔆 Media", color: "#d97706" },
+  { id: "low",  label: "🌙 Baja",  color: "#059669" },
 ];
 
 const PRIORITIES = [
-  { id: "high", label: "Alta",  color: "#f87171" },
-  { id: "med",  label: "Media", color: "#fbbf24" },
-  { id: "low",  label: "Baja",  color: "#34d399" },
+  { id: "high", label: "Alta",  color: "#dc2626" },
+  { id: "med",  label: "Media", color: "#d97706" },
+  { id: "low",  label: "Baja",  color: "#059669" },
 ];
 
 const parseHashtags = (str = "") =>
@@ -60,134 +56,190 @@ const getAllTags = (items) => {
   return [...set].sort();
 };
 
+// Calcular días de retraso (negativo = días restantes, positivo = días retrasado)
+const getDaysInfo = (dueDate) => {
+  if (!dueDate) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due = new Date(dueDate + "T00:00:00");
+  const diff = Math.round((today - due) / (1000 * 60 * 60 * 24));
+  return diff;
+};
+
+const DaysTag = ({ dueDate }) => {
+  if (!dueDate) return null;
+  const diff = getDaysInfo(dueDate);
+  if (diff === 0) return <span style={{fontSize:10,fontWeight:700,background:"#fef3c7",color:"#92400e",border:"1px solid #fcd34d",borderRadius:4,padding:"1px 6px"}}>Hoy</span>;
+  if (diff > 0) return <span style={{fontSize:10,fontWeight:700,background:"#fee2e2",color:"#991b1b",border:"1px solid #fca5a5",borderRadius:4,padding:"1px 6px"}}>+{diff}d retraso</span>;
+  return <span style={{fontSize:10,fontWeight:700,background:"#dcfce7",color:"#166534",border:"1px solid #86efac",borderRadius:4,padding:"1px 6px"}}>{Math.abs(diff)}d restantes</span>;
+};
+
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #080810; }
+  body { background: #f8f9fc; }
   ::-webkit-scrollbar { width: 3px; }
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
-  .gtd-root { min-height: 100vh; background: #080810; color: #dde1f0; font-family: 'Bricolage Grotesque', sans-serif; display: flex; flex-direction: column; }
+  ::-webkit-scrollbar-thumb { background: #dde1ea; border-radius: 2px; }
+
+  .gtd-root { min-height: 100vh; background: #f8f9fc; color: #1e1e2e; font-family: 'Bricolage Grotesque', sans-serif; display: flex; flex-direction: column; }
 
   /* TOPBAR */
-  .topbar { position: sticky; top: 0; z-index: 100; background: rgba(8,8,16,0.95); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.05); height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
-  .logo { font-size: 19px; font-weight: 800; letter-spacing: -1px; color: #fff; }
-  .logo span { color: #818cf8; }
-  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 6px #34d399; flex-shrink: 0; }
-  .sync-dot.off { background: #f87171; box-shadow: 0 0 6px #f87171; }
-  .topbar-btns { display: flex; gap: 6px; align-items: center; }
-  .topbtn { background: transparent; border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; color: #666; padding: 5px 11px; font-size: 12px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
-  .topbtn.active { background: rgba(129,140,248,0.15); border-color: rgba(129,140,248,0.3); color: #818cf8; }
+  .topbar { position: sticky; top: 0; z-index: 100; background: rgba(248,249,252,0.95); backdrop-filter: blur(16px); border-bottom: 1px solid #e4e7ef; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; }
+  .logo { font-size: 19px; font-weight: 800; letter-spacing: -1px; color: #1e1e2e; }
+  .logo span { color: #6366f1; }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: #059669; box-shadow: 0 0 5px #059669; flex-shrink: 0; }
+  .sync-dot.off { background: #dc2626; box-shadow: 0 0 5px #dc2626; }
+  .topbar-right { display: flex; gap: 8px; align-items: center; }
+  .topbtn { background: transparent; border: 1px solid #dde1ea; border-radius: 8px; color: #94a3b8; padding: 5px 12px; font-size: 12px; cursor: pointer; font-family: inherit; font-weight: 600; transition: all 0.15s; }
+  .topbtn:hover { border-color: #6366f1; color: #6366f1; }
+  .topbtn.active { background: #eef0fd; border-color: #c7d2fe; color: #6366f1; }
 
   /* NAV */
-  .nav { display: flex; gap: 4px; overflow-x: auto; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); scrollbar-width: none; }
+  .nav { display: flex; gap: 4px; overflow-x: auto; padding: 10px 20px; border-bottom: 1px solid #e4e7ef; background: #fff; scrollbar-width: none; }
   .nav::-webkit-scrollbar { display: none; }
-  .navbtn { display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: #555; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap; transition: all 0.15s; font-family: inherit; }
+  .navbtn { display: flex; align-items: center; gap: 5px; padding: 6px 13px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: #94a3b8; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap; transition: all 0.15s; font-family: inherit; }
+  .navbtn:hover { background: #f1f5f9; color: #475569; }
   .navbtn.active { background: var(--bc); border-color: var(--bb); color: var(--bt); }
-  .badge-count { background: var(--bt); color: #080810; border-radius: 10px; padding: 0 5px; font-size: 10px; font-weight: 800; }
+  .badge-count { background: var(--bt); color: #fff; border-radius: 10px; padding: 0 6px; font-size: 10px; font-weight: 800; }
 
   /* MAIN */
-  .main { flex: 1; padding: 18px 14px 100px; max-width: 680px; margin: 0 auto; width: 100%; }
-  .section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #3a3a5c; margin-bottom: 12px; margin-top: 4px; }
-  .bucket-header { margin-bottom: 14px; }
-  .bucket-name { font-size: 20px; font-weight: 800; margin-bottom: 2px; letter-spacing: -0.5px; }
-  .bucket-desc { font-size: 11px; color: #444; }
+  .main { flex: 1; padding: 20px 20px 100px; max-width: 900px; margin: 0 auto; width: 100%; }
+
+  /* DASHBOARD */
+  .dashboard-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 640px) { .dashboard-grid { grid-template-columns: 1fr 1fr; } }
+  .dash-col { display: flex; flex-direction: column; gap: 8px; }
+  .dash-col-full { grid-column: 1 / -1; }
+  .dash-section { background: #fff; border: 1px solid #e4e7ef; border-radius: 14px; overflow: hidden; }
+  .dash-header { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; }
+  .dash-title { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
+  .dash-count { background: #f1f5f9; color: #64748b; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 700; }
+  .dash-items { padding: 8px; }
+  .dash-empty { padding: 20px; text-align: center; color: #cbd5e1; font-size: 12px; }
+
+  /* DASH ITEM */
+  .dash-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 10px; border-radius: 10px; cursor: pointer; transition: background 0.12s; border: 1px solid transparent; margin-bottom: 4px; }
+  .dash-item:hover { background: #f8f9fc; border-color: #e4e7ef; }
+  .dash-item:last-child { margin-bottom: 0; }
+  .dash-item-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+  .dash-item-body { flex: 1; min-width: 0; }
+  .dash-item-title { font-size: 13px; font-weight: 600; color: #1e293b; line-height: 1.4; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dash-item-meta { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .dash-item-overdue { background: #fef2f2; border-color: #fecaca !important; }
+  .dash-item-today { background: #fffbeb; border-color: #fde68a !important; }
+
+  /* STATS ROW */
+  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+  @media (min-width: 480px) { .stats-row { grid-template-columns: repeat(6, 1fr); } }
+  .stat-box { background: #fff; border: 1px solid #e4e7ef; border-radius: 12px; padding: 12px 10px; text-align: center; cursor: pointer; transition: all 0.15s; }
+  .stat-box:hover { border-color: var(--sc); background: var(--sbg); }
+  .stat-num { font-size: 22px; font-weight: 800; color: var(--sc); }
+  .stat-lbl { font-size: 10px; color: #94a3b8; margin-top: 2px; font-weight: 600; }
+  .stat-icon { font-size: 16px; margin-bottom: 2px; }
 
   /* CAPTURE BAR */
-  .capture-bar { display: flex; gap: 8px; margin-bottom: 16px; }
-  .capture-inp { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(129,140,248,0.25); border-radius: 12px; color: #eef0f8; font-family: inherit; font-size: 15px; padding: 12px 16px; outline: none; transition: border-color 0.15s; }
-  .capture-inp:focus { border-color: rgba(129,140,248,0.6); background: rgba(129,140,248,0.06); }
-  .capture-inp::placeholder { color: #2a2a44; }
-  .capture-btn { background: linear-gradient(135deg, #6366f1, #818cf8); border: none; border-radius: 12px; color: #fff; font-size: 22px; width: 46px; height: 46px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.15s; }
-  .capture-btn:hover { transform: scale(1.08); }
+  .capture-wrap { background: #fff; border: 1px solid #e4e7ef; border-radius: 14px; padding: 12px 14px; margin-bottom: 16px; }
+  .capture-label { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #94a3b8; margin-bottom: 8px; }
+  .capture-bar { display: flex; gap: 8px; }
+  .capture-inp { flex: 1; background: #f8f9fc; border: 1px solid #e4e7ef; border-radius: 10px; color: #1e293b; font-family: inherit; font-size: 14px; padding: 10px 14px; outline: none; transition: border-color 0.15s; }
+  .capture-inp:focus { border-color: #6366f1; background: #fff; }
+  .capture-inp::placeholder { color: #cbd5e1; }
+  .capture-btn { background: #6366f1; border: none; border-radius: 10px; color: #fff; font-size: 20px; width: 42px; height: 42px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s; }
+  .capture-btn:hover { background: #4f46e5; }
 
   /* PROCESS BANNER */
-  .process-banner { background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: background 0.15s; }
-  .process-banner:hover { background: rgba(251,191,36,0.14); }
-  .process-banner-text { font-size: 12px; color: #fbbf24; font-weight: 600; }
-  .process-banner-count { background: #fbbf24; color: #080810; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 800; }
+  .process-banner { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: background 0.15s; }
+  .process-banner:hover { background: #fef3c7; }
+  .process-banner-text { font-size: 12px; color: #92400e; font-weight: 700; }
+  .process-banner-count { background: #f59e0b; color: #fff; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 800; }
 
-  /* CARDS */
-  .card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 14px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
-  .card:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); }
-  .card.unprocessed { border-color: rgba(129,140,248,0.2); background: rgba(129,140,248,0.04); }
-  .card-title { font-size: 14px; font-weight: 600; color: #eef0f8; line-height: 1.4; margin-bottom: 6px; }
+  /* BUCKET VIEW CARDS */
+  .card { background: #fff; border: 1px solid #e4e7ef; border-radius: 12px; padding: 14px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; }
+  .card:hover { border-color: #c7d2fe; box-shadow: 0 2px 8px rgba(99,102,241,0.08); }
+  .card.unprocessed { border-color: #c7d2fe; background: #fafafe; }
+  .card-title { font-size: 14px; font-weight: 600; color: #1e293b; line-height: 1.4; margin-bottom: 6px; }
   .card-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .unprocessed-label { font-size: 10px; color: #818cf8; font-family: 'DM Mono', monospace; }
+  .unprocessed-label { font-size: 10px; color: #6366f1; font-family: 'DM Mono', monospace; }
   .pill { border-radius: 5px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
-  .hashtag { display: inline-flex; align-items: center; background: rgba(129,140,248,0.1); border: 1px solid rgba(129,140,248,0.2); color: #818cf8; border-radius: 5px; padding: 1px 7px; font-size: 10px; font-family: 'DM Mono', monospace; cursor: pointer; transition: all 0.12s; user-select: none; }
-  .hashtag:hover { background: rgba(129,140,248,0.22); }
-  .hashtag.active-filter { background: rgba(129,140,248,0.28); border-color: #818cf8; font-weight: 600; }
+  .hashtag { display: inline-flex; align-items: center; background: #eef0fd; border: 1px solid #c7d2fe; color: #6366f1; border-radius: 5px; padding: 1px 7px; font-size: 10px; font-family: 'DM Mono', monospace; cursor: pointer; transition: all 0.12s; }
+  .hashtag:hover, .hashtag.active-filter { background: #e0e7ff; border-color: #6366f1; }
   .quick-moves { display: flex; gap: 4px; margin-top: 10px; flex-wrap: wrap; }
-  .qbtn { background: none; border: 1px solid rgba(255,255,255,0.05); border-radius: 5px; color: #444; font-size: 10px; padding: 2px 6px; cursor: pointer; font-family: inherit; transition: all 0.12s; }
-  .qbtn:hover { border-color: rgba(255,255,255,0.15); color: #888; }
+  .qbtn { background: #f8f9fc; border: 1px solid #e4e7ef; border-radius: 5px; color: #94a3b8; font-size: 10px; padding: 2px 7px; cursor: pointer; font-family: inherit; transition: all 0.12s; }
+  .qbtn:hover { border-color: #6366f1; color: #6366f1; }
 
   /* FAB */
-  .fab { position: fixed; bottom: 22px; right: 20px; width: 54px; height: 54px; border-radius: 50%; background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%); border: none; color: #fff; font-size: 24px; cursor: pointer; box-shadow: 0 0 0 1px rgba(99,102,241,0.4), 0 8px 32px rgba(99,102,241,0.4); display: flex; align-items: center; justify-content: center; z-index: 200; transition: transform 0.15s; }
-  .fab:hover { transform: scale(1.08); }
+  .fab { position: fixed; bottom: 22px; right: 20px; width: 54px; height: 54px; border-radius: 50%; background: #6366f1; border: none; color: #fff; font-size: 24px; cursor: pointer; box-shadow: 0 4px 20px rgba(99,102,241,0.4); display: flex; align-items: center; justify-content: center; z-index: 200; transition: all 0.15s; }
+  .fab:hover { background: #4f46e5; transform: scale(1.05); }
 
   /* MODALS */
-  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(10px); display: flex; align-items: flex-end; justify-content: center; z-index: 300; }
-  .modal-box { background: #0e0e1e; border: 1px solid rgba(255,255,255,0.08); border-radius: 20px 20px 0 0; padding: 22px 18px 40px; width: 100%; max-width: 680px; max-height: 92vh; overflow-y: auto; }
-  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-  .modal-title { font-size: 17px; font-weight: 800; color: #fff; }
-  .modal-subtitle { font-size: 11px; color: #444; margin-bottom: 20px; }
-  .close-btn { background: none; border: none; color: #555; font-size: 20px; cursor: pointer; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,0.5); backdrop-filter: blur(6px); display: flex; align-items: flex-end; justify-content: center; z-index: 300; }
+  .modal-box { background: #fff; border: 1px solid #e4e7ef; border-radius: 20px 20px 0 0; padding: 22px 20px 40px; width: 100%; max-width: 680px; max-height: 92vh; overflow-y: auto; box-shadow: 0 -8px 40px rgba(15,23,42,0.12); }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .modal-title { font-size: 17px; font-weight: 800; color: #1e293b; }
+  .modal-subtitle { font-size: 11px; color: #94a3b8; margin-bottom: 20px; }
+  .close-btn { background: #f1f5f9; border: none; border-radius: 8px; color: #64748b; font-size: 16px; width: 30px; height: 30px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
   /* PROCESS STEPS */
   .process-step { margin-bottom: 18px; }
-  .step-title { font-size: 11px; color: #fbbf24; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
-  .step-num { background: rgba(251,191,36,0.15); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; flex-shrink: 0; }
+  .step-title { font-size: 11px; color: #d97706; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .step-num { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; flex-shrink: 0; }
 
-  /* FORM ELEMENTS */
-  .field-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #555; margin-bottom: 6px; display: block; }
-  .inp { width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; color: #eef0f8; font-family: inherit; font-size: 14px; padding: 10px 13px; outline: none; margin-bottom: 8px; transition: border-color 0.15s; }
-  .inp:focus { border-color: rgba(129,140,248,0.5); }
-  .inp::placeholder { color: #333; }
+  /* FORM */
+  .field-label { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #94a3b8; margin-bottom: 6px; display: block; }
+  .inp { width: 100%; background: #f8f9fc; border: 1px solid #e4e7ef; border-radius: 10px; color: #1e293b; font-family: inherit; font-size: 14px; padding: 10px 13px; outline: none; margin-bottom: 8px; transition: border-color 0.15s; }
+  .inp:focus { border-color: #6366f1; background: #fff; }
+  .inp::placeholder { color: #cbd5e1; }
   textarea.inp { resize: vertical; min-height: 72px; }
   select.inp { cursor: pointer; }
-  select.inp option { background: #0e0e1e; }
+  select.inp option { background: #fff; color: #1e293b; }
   .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
-  .chip { padding: 5px 11px; border-radius: 7px; font-size: 11px; font-weight: 700; cursor: pointer; border: 1px solid rgba(255,255,255,0.06); background: transparent; color: #555; font-family: inherit; transition: all 0.12s; }
+  .chip { padding: 5px 12px; border-radius: 7px; font-size: 11px; font-weight: 700; cursor: pointer; border: 1px solid #e4e7ef; background: #f8f9fc; color: #94a3b8; font-family: inherit; transition: all 0.12s; }
   .chip.on { background: var(--cc); border-color: var(--cb); color: var(--ct); }
-  .btn-row { display: flex; gap: 8px; margin-top: 6px; }
+  .btn-row { display: flex; gap: 8px; margin-top: 8px; }
   .btn { flex: 1; padding: 11px; border-radius: 10px; border: none; cursor: pointer; font-family: inherit; font-weight: 700; font-size: 13px; transition: all 0.15s; }
-  .btn-primary { background: linear-gradient(135deg, #6366f1, #818cf8); color: #fff; }
-  .btn-process { background: linear-gradient(135deg, #d97706, #fbbf24); color: #080810; }
-  .btn-ghost { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); color: #888; }
-  .btn-danger { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.25); color: #f87171; }
+  .btn-primary { background: #6366f1; color: #fff; }
+  .btn-primary:hover { background: #4f46e5; }
+  .btn-process { background: #f59e0b; color: #fff; }
+  .btn-process:hover { background: #d97706; }
+  .btn-ghost { background: #f1f5f9; border: 1px solid #e4e7ef; color: #64748b; }
+  .btn-danger { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
 
   /* MISC */
-  .search-inp { width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; color: #eef0f8; font-family: 'DM Mono', monospace; font-size: 13px; padding: 9px 13px; outline: none; margin-bottom: 8px; }
-  .search-inp::placeholder { color: #2a2a44; }
+  .search-inp { width: 100%; background: #fff; border: 1px solid #e4e7ef; border-radius: 10px; color: #1e293b; font-family: 'DM Mono', monospace; font-size: 13px; padding: 9px 13px; outline: none; margin-bottom: 8px; }
+  .search-inp:focus { border-color: #6366f1; }
+  .search-inp::placeholder { color: #cbd5e1; }
   .filter-bar { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
-  .clear-filter { font-size: 10px; color: #f87171; background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.2); border-radius: 5px; padding: 2px 8px; cursor: pointer; font-family: inherit; }
+  .clear-filter { font-size: 10px; color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; border-radius: 5px; padding: 2px 8px; cursor: pointer; font-family: inherit; }
   .tag-suggestions { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px; }
-  .tag-sug { background: rgba(129,140,248,0.06); border: 1px solid rgba(129,140,248,0.14); border-radius: 5px; color: #555; font-size: 10px; font-family: 'DM Mono', monospace; padding: 3px 8px; cursor: pointer; transition: all 0.12s; }
-  .tag-sug:hover { color: #818cf8; border-color: rgba(129,140,248,0.4); }
-  .empty { text-align: center; padding: 52px 20px; color: #2a2a44; }
-  .empty-icon { font-size: 44px; margin-bottom: 12px; }
+  .tag-sug { background: #eef0fd; border: 1px solid #c7d2fe; border-radius: 5px; color: #6366f1; font-size: 10px; font-family: 'DM Mono', monospace; padding: 3px 8px; cursor: pointer; transition: all 0.12s; }
+  .tag-sug:hover { background: #e0e7ff; }
+  .bucket-header { margin-bottom: 14px; }
+  .bucket-name { font-size: 20px; font-weight: 800; margin-bottom: 2px; letter-spacing: -0.5px; color: #1e293b; }
+  .bucket-desc { font-size: 11px; color: #94a3b8; }
+  .section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #94a3b8; margin-bottom: 10px; margin-top: 4px; }
+  .empty { text-align: center; padding: 52px 20px; color: #cbd5e1; }
+  .empty-icon { font-size: 40px; margin-bottom: 10px; }
   .empty-text { font-size: 13px; }
-  .proj-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 14px; margin-bottom: 8px; border-left: 3px solid var(--pc); }
-  .proj-title { font-size: 15px; font-weight: 700; color: #f0f0ff; margin-bottom: 4px; }
-  .proj-desc { font-size: 12px; color: #444; margin-bottom: 10px; line-height: 1.5; }
+  .proj-card { background: #fff; border: 1px solid #e4e7ef; border-left: 3px solid var(--pc); border-radius: 12px; padding: 14px; margin-bottom: 8px; }
+  .proj-title { font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+  .proj-desc { font-size: 12px; color: #64748b; margin-bottom: 10px; line-height: 1.5; }
   .proj-actions { display: flex; gap: 6px; }
-  .small-btn { background: none; border: 1px solid rgba(255,255,255,0.07); border-radius: 6px; color: #555; font-size: 11px; padding: 4px 9px; cursor: pointer; font-family: inherit; transition: all 0.12s; }
-  .small-btn:hover { border-color: rgba(255,255,255,0.15); color: #999; }
+  .small-btn { background: #f8f9fc; border: 1px solid #e4e7ef; border-radius: 6px; color: #64748b; font-size: 11px; padding: 4px 10px; cursor: pointer; font-family: inherit; font-weight: 600; transition: all 0.12s; }
+  .small-btn:hover { border-color: #6366f1; color: #6366f1; }
   .color-dot { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; transition: transform 0.12s; }
   .color-dot:hover { transform: scale(1.15); }
   .color-row { display: flex; gap: 7px; margin-bottom: 12px; }
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 20px; }
-  .stat-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 10px; text-align: center; }
-  .stat-num { font-size: 24px; font-weight: 800; }
-  .stat-lbl { font-size: 10px; color: #444; margin-top: 2px; }
-  .info-block { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; padding: 14px; margin-bottom: 12px; font-size: 12px; color: #555; line-height: 1.9; }
-  .info-block strong { color: #aaa; }
-  .divider { border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 16px 0; }
-  input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
-  .loading { display: flex; align-items: center; justify-content: center; height: 100vh; background: #080810; color: #333; font-size: 14px; font-family: 'Bricolage Grotesque', sans-serif; }
+  .stat-card { background: #f8f9fc; border: 1px solid #e4e7ef; border-radius: 10px; padding: 12px 10px; text-align: center; }
+  .stat-card-num { font-size: 22px; font-weight: 800; }
+  .stat-card-lbl { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+  .info-block { background: #f8f9fc; border: 1px solid #e4e7ef; border-radius: 10px; padding: 14px; margin-bottom: 12px; font-size: 12px; color: #64748b; line-height: 1.9; }
+  .info-block strong { color: #1e293b; }
+  .divider { border: none; border-top: 1px solid #f1f5f9; margin: 14px 0; }
+  input[type=date]::-webkit-calendar-picker-indicator { cursor: pointer; }
+  .loading { display: flex; align-items: center; justify-content: center; height: 100vh; background: #f8f9fc; color: #94a3b8; font-size: 14px; font-family: 'Bricolage Grotesque', sans-serif; gap: 10px; }
 `;
 
-// ── CAPTURE MODAL (solo título) ───────────────────────────────────────────────
+// ── CAPTURE MODAL ─────────────────────────────────────────────────────────────
 function CaptureModal({ onSave, onClose }) {
   const [title, setTitle] = useState("");
   const submit = () => {
@@ -203,11 +255,10 @@ function CaptureModal({ onSave, onClose }) {
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
         <div className="modal-subtitle">Captura el pensamiento. Procésalo después.</div>
-        <input className="inp" style={{fontSize:16, padding:"14px 16px"}}
+        <input className="inp" style={{fontSize:16,padding:"14px 16px"}}
           placeholder="¿Qué tienes en mente?"
           value={title} onChange={e => setTitle(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && submit()}
-          autoFocus />
+          onKeyDown={e => e.key === "Enter" && submit()} autoFocus />
         <div className="btn-row">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={submit}>Capturar →</button>
@@ -217,12 +268,12 @@ function CaptureModal({ onSave, onClose }) {
   );
 }
 
-// ── PROCESS MODAL (contexto completo) ────────────────────────────────────────
+// ── PROCESS MODAL ─────────────────────────────────────────────────────────────
 function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
   const [f, setF] = useState({
     title: item?.title || "",
     notes: item?.notes || "",
-    bucket: item?.bucket || "next",
+    bucket: item?.bucket === "inbox" ? "next" : (item?.bucket || "next"),
     projectId: item?.projectId || "",
     priority: item?.priority || "med",
     energy: item?.energy || "med",
@@ -235,7 +286,6 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const existingTags = getAllTags(allItems).filter(t => !parseHashtags(f.hashtags).includes(t));
   const addTag = (tag) => { const cur = f.hashtags.trim(); set("hashtags", cur ? `${cur} ${tag}` : tag); };
-
   const isNew = !item?.processed;
 
   return (
@@ -247,7 +297,6 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
         </div>
         <div className="modal-subtitle">{isNew ? "Define qué es esto y qué acción requiere" : item?.title}</div>
 
-        {/* PASO 1 — QUÉ ES */}
         <div className="process-step">
           <div className="step-title"><span className="step-num">1</span> ¿Qué es?</div>
           <input className="inp" placeholder="Título / acción concreta" value={f.title}
@@ -255,16 +304,14 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
           <textarea className="inp" placeholder="Notas, links, contexto adicional..."
             value={f.notes} onChange={e => set("notes", e.target.value)} />
         </div>
-
         <hr className="divider" />
 
-        {/* PASO 2 — A DÓNDE VA */}
         <div className="process-step">
           <div className="step-title"><span className="step-num">2</span> ¿A dónde va?</div>
           <div className="chip-row">
             {BUCKETS.filter(b => b.id !== "inbox").map(b => (
               <button key={b.id} className={`chip${f.bucket===b.id?" on":""}`}
-                style={{"--cc":`${b.color}20`,"--cb":`${b.color}50`,"--ct":b.color}}
+                style={{"--cc":`${b.color}18`,"--cb":`${b.color}50`,"--ct":b.color}}
                 onClick={() => set("bucket", b.id)}>{b.icon} {b.label}</button>
             ))}
           </div>
@@ -278,31 +325,26 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
               onChange={e => set("waitingFor", e.target.value)} />
           </>}
         </div>
-
         <hr className="divider" />
 
-        {/* PASO 3 — CONTEXTO */}
         <div className="process-step">
           <div className="step-title"><span className="step-num">3</span> Contexto</div>
-
           <label className="field-label">Prioridad</label>
           <div className="chip-row">
             {PRIORITIES.map(p => (
               <button key={p.id} className={`chip${f.priority===p.id?" on":""}`}
-                style={{"--cc":`${p.color}20`,"--cb":`${p.color}50`,"--ct":p.color}}
+                style={{"--cc":`${p.color}18`,"--cb":`${p.color}50`,"--ct":p.color}}
                 onClick={() => set("priority", p.id)}>{p.label}</button>
             ))}
           </div>
-
           <label className="field-label">Energía requerida</label>
           <div className="chip-row">
             {ENERGY.map(e => (
               <button key={e.id} className={`chip${f.energy===e.id?" on":""}`}
-                style={{"--cc":`${e.color}20`,"--cb":`${e.color}50`,"--ct":e.color}}
+                style={{"--cc":`${e.color}18`,"--cb":`${e.color}50`,"--ct":e.color}}
                 onClick={() => set("energy", e.id)}>{e.label}</button>
             ))}
           </div>
-
           {projects.length > 0 && <>
             <label className="field-label">Proyecto</label>
             <select className="inp" value={f.projectId} onChange={e => set("projectId", e.target.value)}>
@@ -310,18 +352,16 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
               {projects.map(p => <option key={p._id} value={p._id}>{p.title}</option>)}
             </select>
           </>}
-
           <label className="field-label">Contexto</label>
-          <input className="inp" placeholder="@casa  @oficina  @llamadas  @viaje..."
+          <input className="inp" placeholder="@casa  @oficina  @llamadas..."
             value={f.context} onChange={e => set("context", e.target.value)} />
-
           <label className="field-label">Hashtags</label>
           <input className="inp" placeholder="#deep-work  #15min  #revisión..."
             value={f.hashtags} onChange={e => set("hashtags", e.target.value)}
             style={{fontFamily:"'DM Mono',monospace",fontSize:13}} />
           {existingTags.length > 0 && (
             <div className="tag-suggestions">
-              <span style={{fontSize:10,color:"#333",marginRight:2}}>usar:</span>
+              <span style={{fontSize:10,color:"#94a3b8",marginRight:4}}>usar:</span>
               {existingTags.map(t => <button key={t} className="tag-sug" onClick={() => addTag(t)}>{t}</button>)}
             </div>
           )}
@@ -330,7 +370,7 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
         <div className="btn-row">
           {item && <button className="btn btn-danger" onClick={() => { onDelete(item._id); onClose(); }}>Eliminar</button>}
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className={`btn ${isNew ? "btn-process" : "btn-primary"}`} onClick={() => {
+          <button className={`btn ${isNew?"btn-process":"btn-primary"}`} onClick={() => {
             if (!f.title.trim()) return;
             onSave({ ...item, ...f, type: "item" });
             onClose();
@@ -343,12 +383,12 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
 
 // ── PROJECT FORM ──────────────────────────────────────────────────────────────
 function ProjectForm({ project, onSave, onDelete, onClose }) {
-  const COLORS = ["#818cf8","#fbbf24","#34d399","#f87171","#a78bfa","#22d3ee","#fb923c","#f472b6"];
+  const COLORS = ["#6366f1","#d97706","#059669","#dc2626","#7c3aed","#0891b2","#ea580c","#db2777"];
   const [f, setF] = useState({
     title: project?.title || "",
     description: project?.description || "",
     status: project?.status || "active",
-    color: project?.color || "#818cf8",
+    color: project?.color || "#6366f1",
   });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   return (
@@ -358,6 +398,7 @@ function ProjectForm({ project, onSave, onDelete, onClose }) {
           <span className="modal-title">{project ? "Editar proyecto" : "Nuevo proyecto"}</span>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
+        <div style={{marginBottom:16}} />
         <label className="field-label">Nombre *</label>
         <input className="inp" placeholder="Ej: Lanzar campaña Q2" value={f.title}
           onChange={e => set("title", e.target.value)} autoFocus />
@@ -368,14 +409,14 @@ function ProjectForm({ project, onSave, onDelete, onClose }) {
         <div className="color-row">
           {COLORS.map(c => (
             <div key={c} className="color-dot" onClick={() => set("color", c)}
-              style={{background:c,border:f.color===c?"2px solid #fff":"2px solid transparent"}} />
+              style={{background:c,border:f.color===c?"3px solid #1e293b":"3px solid transparent"}} />
           ))}
         </div>
         <label className="field-label">Estado</label>
         <div className="chip-row">
-          {[["active","Activo","#34d399"],["paused","Pausado","#fbbf24"],["done","Completado","#94a3b8"]].map(([id,lbl,col]) => (
+          {[["active","Activo","#059669"],["paused","Pausado","#d97706"],["done","Completado","#64748b"]].map(([id,lbl,col]) => (
             <button key={id} className={`chip${f.status===id?" on":""}`}
-              style={{"--cc":`${col}20`,"--cb":`${col}50`,"--ct":col}}
+              style={{"--cc":`${col}18`,"--cb":`${col}50`,"--ct":col}}
               onClick={() => set("status", id)}>{lbl}</button>
           ))}
         </div>
@@ -393,38 +434,279 @@ function ProjectForm({ project, onSave, onDelete, onClose }) {
   );
 }
 
-// ── ITEM CARD ─────────────────────────────────────────────────────────────────
-function ItemCard({ item, projects, onEdit, onMoveTo, onTagClick, activeTag }) {
-  const bucket = BUCKETS.find(b => b.id === item.bucket);
+// ── DASH ITEM ─────────────────────────────────────────────────────────────────
+function DashItem({ item, projects, onEdit }) {
   const project = projects.find(p => p._id === item.projectId);
   const priority = PRIORITIES.find(p => p.id === item.priority);
-  const energy = ENERGY.find(e => e.id === item.energy);
-  const tags = parseHashtags(item.hashtags);
+  const diff = getDaysInfo(item.dueDate);
+  const isOverdue = diff !== null && diff > 0;
+  const isToday = diff === 0;
+
   return (
-    <div className={`card${!item.processed?" unprocessed":""}`}
-      style={{borderLeft:`3px solid ${bucket?.color||"#333"}`}} onClick={() => onEdit(item)}>
-      <div className="card-title">{item.title}</div>
-      <div className="card-meta">
-        {!item.processed && <span className="unprocessed-label">· sin procesar</span>}
-        {priority && item.processed && <span className="pill" style={{background:`${priority.color}18`,color:priority.color,border:`1px solid ${priority.color}40`}}>{priority.label}</span>}
-        {energy && item.processed && <span className="pill" style={{background:`${energy.color}18`,color:energy.color,border:`1px solid ${energy.color}40`}}>{energy.label}</span>}
-        {project && <span className="pill" style={{background:`${project.color||"#818cf8"}18`,color:project.color||"#818cf8",border:`1px solid ${project.color||"#818cf8"}40`}}>📁 {project.title}</span>}
-        {item.context && <span style={{fontSize:10,color:"#818cf8",fontFamily:"'DM Mono',monospace"}}>{item.context}</span>}
-        {item.dueDate && <span style={{fontSize:10,color:"#34d399"}}>📅 {item.dueDate}</span>}
-        {item.waitingFor && <span style={{fontSize:10,color:"#a78bfa"}}>⏳ {item.waitingFor}</span>}
-        {tags.map(t => (
-          <span key={t} className={`hashtag${activeTag===t?" active-filter":""}`}
-            onClick={e => { e.stopPropagation(); onTagClick(t); }}>{t}</span>
-        ))}
-        {item.notes && <span style={{fontSize:10,color:"#2a2a44"}}>· notas</span>}
-      </div>
-      {item.processed && (
-        <div className="quick-moves" onClick={e => e.stopPropagation()}>
-          {BUCKETS.filter(b => b.id !== item.bucket).map(b => (
-            <button key={b.id} className="qbtn" onClick={() => onMoveTo(item._id, b.id)}>→ {b.icon} {b.label}</button>
+    <div className={`dash-item${isOverdue?" dash-item-overdue":isToday?" dash-item-today":""}`}
+      onClick={() => onEdit(item)}>
+      <div className="dash-item-dot" style={{background: priority?.color || "#94a3b8"}} />
+      <div className="dash-item-body">
+        <div className="dash-item-title">{item.title}</div>
+        <div className="dash-item-meta">
+          {item.dueDate && <DaysTag dueDate={item.dueDate} />}
+          {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ {item.waitingFor}</span>}
+          {project && <span style={{fontSize:10,color:project.color||"#6366f1",fontWeight:600}}>📁 {project.title}</span>}
+          {item.context && <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{item.context}</span>}
+          {parseHashtags(item.hashtags).map(t => (
+            <span key={t} className="hashtag" style={{cursor:"default"}}>{t}</span>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+function Dashboard({ items, projects, onEdit, onNewItem, onCapture }) {
+  const agenda = items.filter(i => i.bucket === "agenda" && i.processed)
+    .sort((a,b) => {
+      const da = getDaysInfo(a.dueDate) ?? -9999;
+      const db_ = getDaysInfo(b.dueDate) ?? -9999;
+      return db_ - da; // más retrasados primero
+    });
+  const next = items.filter(i => i.bucket === "next" && i.processed)
+    .sort((a,b) => {
+      const pOrder = {high:0,med:1,low:2};
+      return (pOrder[a.priority]||1) - (pOrder[b.priority]||1);
+    });
+  const waiting = items.filter(i => i.bucket === "waiting" && i.processed);
+  const unprocessed = items.filter(i => i.bucket === "inbox" && !i.processed);
+  const overdue = agenda.filter(i => getDaysInfo(i.dueDate) > 0).length;
+
+  return (
+    <div>
+      {/* STATS ROW */}
+      <div className="stats-row">
+        {BUCKETS.map(b => {
+          const count = items.filter(i => i.bucket === b.id).length;
+          return (
+            <div key={b.id} className="stat-box" style={{"--sc":b.color,"--sbg":`${b.color}0d`}}>
+              <div className="stat-icon">{b.icon}</div>
+              <div className="stat-num">{count}</div>
+              <div className="stat-lbl">{b.label}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* PROCESS BANNER */}
+      {unprocessed.length > 0 && (
+        <div className="process-banner" onClick={() => onEdit(unprocessed[0])}>
+          <span className="process-banner-text">⚡ Procesar bandeja de entrada</span>
+          <span className="process-banner-count">{unprocessed.length} pendientes</span>
+        </div>
       )}
+
+      {/* OVERDUE ALERT */}
+      {overdue > 0 && (
+        <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:16}}>🚨</span>
+          <span style={{fontSize:12,color:"#991b1b",fontWeight:700}}>{overdue} tarea{overdue>1?"s":""} de agenda vencida{overdue>1?"s":""}</span>
+        </div>
+      )}
+
+      {/* DASHBOARD GRID */}
+      <div className="dashboard-grid">
+        {/* AGENDA */}
+        <div className="dash-section dash-col-full">
+          <div className="dash-header">
+            <div className="dash-title" style={{color:"#059669"}}>📅 Agenda</div>
+            <span className="dash-count">{agenda.length}</span>
+          </div>
+          <div className="dash-items">
+            {agenda.length === 0
+              ? <div className="dash-empty">Sin items en agenda</div>
+              : agenda.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} />)
+            }
+          </div>
+        </div>
+
+        {/* NEXT ACTIONS */}
+        <div className="dash-section">
+          <div className="dash-header">
+            <div className="dash-title" style={{color:"#d97706"}}>⚡ Next Actions</div>
+            <span className="dash-count">{next.length}</span>
+          </div>
+          <div className="dash-items">
+            {next.length === 0
+              ? <div className="dash-empty">Sin next actions</div>
+              : next.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} />)
+            }
+          </div>
+        </div>
+
+        {/* WAITING */}
+        <div className="dash-section">
+          <div className="dash-header">
+            <div className="dash-title" style={{color:"#7c3aed"}}>⏳ Waiting</div>
+            <span className="dash-count">{waiting.length}</span>
+          </div>
+          <div className="dash-items">
+            {waiting.length === 0
+              ? <div className="dash-empty">Nada esperando</div>
+              : waiting.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} />)
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── BUCKET VIEW ───────────────────────────────────────────────────────────────
+function BucketView({ bucket, items, projects, allItems, onEdit, onMoveTo, onTagClick, activeTag, search, setSearch, setActiveTag, unprocessed }) {
+  const bkt = BUCKETS.find(b => b.id === bucket);
+  const bucketTags = [...new Set(items.filter(i=>i.bucket===bucket).flatMap(i=>parseHashtags(i.hashtags)))].sort();
+  const visible = items.filter(i => {
+    if (i.bucket !== bucket) return false;
+    if (activeTag && !parseHashtags(i.hashtags).includes(activeTag)) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!i.title?.toLowerCase().includes(q) && !i.notes?.toLowerCase().includes(q) &&
+          !i.hashtags?.toLowerCase().includes(q) && !i.context?.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  return (
+    <>
+      <div className="bucket-header">
+        <div className="bucket-name">{bkt?.icon} {bkt?.label}</div>
+        <div className="bucket-desc">{bkt?.desc}</div>
+      </div>
+
+      {bucket === "inbox" && (
+        <div className="capture-wrap">
+          <div className="capture-label">Captura rápida</div>
+          <InlineCaptureBar onSave={async (title) => {
+            await db.put({ title, bucket: "inbox", type: "item", processed: false, updatedAt: Date.now() });
+          }} />
+        </div>
+      )}
+
+      {bucket === "inbox" && unprocessed.length > 0 && (
+        <div className="process-banner" onClick={() => onEdit(unprocessed[0])}>
+          <span className="process-banner-text">⚡ Procesar bandeja de entrada</span>
+          <span className="process-banner-count">{unprocessed.length} pendientes</span>
+        </div>
+      )}
+
+      <input className="search-inp" placeholder="/ buscar..."
+        value={search} onChange={e => { setSearch(e.target.value); setActiveTag(""); }} />
+
+      {bucketTags.length > 0 && (
+        <div className="filter-bar">
+          {bucketTags.map(t => (
+            <span key={t} className={`hashtag${activeTag===t?" active-filter":""}`}
+              onClick={() => onTagClick(t)}>{t}</span>
+          ))}
+          {activeTag && <button className="clear-filter" onClick={() => setActiveTag("")}>✕ quitar filtro</button>}
+        </div>
+      )}
+
+      {visible.length === 0 && (
+        <div className="empty">
+          <div className="empty-icon">{bkt?.icon}</div>
+          <div className="empty-text">{(search||activeTag)?"Sin resultados":"Esta bandeja está vacía"}</div>
+        </div>
+      )}
+      {visible.map(item => {
+        const project = projects.find(p => p._id === item.projectId);
+        const priority = PRIORITIES.find(p => p.id === item.priority);
+        const tags = parseHashtags(item.hashtags);
+        return (
+          <div key={item._id} className={`card${!item.processed?" unprocessed":""}`}
+            style={{borderLeft:`3px solid ${bkt?.color||"#e4e7ef"}`}} onClick={() => onEdit(item)}>
+            <div className="card-title">{item.title}</div>
+            <div className="card-meta">
+              {!item.processed && <span className="unprocessed-label">· sin procesar</span>}
+              {item.dueDate && <DaysTag dueDate={item.dueDate} />}
+              {priority && item.processed && <span className="pill" style={{background:`${priority.color}15`,color:priority.color,border:`1px solid ${priority.color}40`}}>{priority.label}</span>}
+              {project && <span className="pill" style={{background:`${project.color||"#6366f1"}15`,color:project.color||"#6366f1",border:`1px solid ${project.color||"#6366f1"}40`}}>📁 {project.title}</span>}
+              {item.context && <span style={{fontSize:10,color:"#6366f1",fontFamily:"'DM Mono',monospace"}}>{item.context}</span>}
+              {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ {item.waitingFor}</span>}
+              {tags.map(t => (
+                <span key={t} className={`hashtag${activeTag===t?" active-filter":""}`}
+                  onClick={e => { e.stopPropagation(); onTagClick(t); }}>{t}</span>
+              ))}
+            </div>
+            {item.processed && (
+              <div className="quick-moves" onClick={e => e.stopPropagation()}>
+                {BUCKETS.filter(b => b.id !== item.bucket).map(b => (
+                  <button key={b.id} className="qbtn" onClick={() => onMoveTo(item._id, b.id)}>→ {b.icon} {b.label}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function InlineCaptureBar({ onSave }) {
+  const [text, setText] = useState("");
+  const submit = async () => {
+    if (!text.trim()) return;
+    await onSave(text.trim());
+    setText("");
+  };
+  return (
+    <div className="capture-bar">
+      <input className="capture-inp" placeholder="Capturar pensamiento... (Enter)"
+        value={text} onChange={e => setText(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && submit()} />
+      <button className="capture-btn" onClick={submit}>+</button>
+    </div>
+  );
+}
+
+// ── SETTINGS VIEW ─────────────────────────────────────────────────────────────
+function SettingsView({ items, projects, online }) {
+  const allTags = getAllTags(items);
+  return (
+    <div>
+      <div className="section-label">Sincronización</div>
+      <div className="info-block" style={{marginBottom:16}}>
+        <span style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:online?"#059669":"#dc2626",display:"inline-block"}}></span>
+          {online ? "✅ Conectado — sincroniza en tiempo real entre todos tus dispositivos." : "❌ Sin conexión."}
+        </span>
+      </div>
+      <div className="section-label">Resumen</div>
+      <div className="stats-grid">
+        {BUCKETS.map(b => (
+          <div key={b.id} className="stat-card">
+            <div style={{fontSize:18}}>{b.icon}</div>
+            <div className="stat-card-num" style={{color:b.color}}>{items.filter(i=>i.bucket===b.id).length}</div>
+            <div className="stat-card-lbl">{b.label}</div>
+          </div>
+        ))}
+      </div>
+      {allTags.length > 0 && <>
+        <div className="section-label">Hashtags</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:20}}>
+          {allTags.map(t => (
+            <span key={t} className="hashtag" style={{cursor:"default"}}>
+              {t}<span style={{marginLeft:5,color:"#94a3b8"}}>{items.filter(i=>parseHashtags(i.hashtags).includes(t)).length}</span>
+            </span>
+          ))}
+        </div>
+      </>}
+      <div className="section-label">Flujo GTD</div>
+      <div className="info-block">
+        <strong>1. Capturar</strong> — Solo el título. Sin pensar. Todo afuera.<br/>
+        <strong>2. Procesar</strong> — ¿Qué es? ¿Requiere acción? ¿Cuál es la siguiente acción?<br/>
+        <strong>3. Organizar</strong> — Next Action, Agenda, Waiting, Archivar o Desechar.<br/>
+        <strong>4. Revisar</strong> — Revisión semanal de todas las bandejas.<br/>
+        <strong>5. Ejecutar</strong> — Elige según contexto y energía.
+      </div>
     </div>
   );
 }
@@ -440,20 +722,20 @@ function ProjectsView({ projects, items, onEdit, onNew, onNewItem }) {
       {projects.length === 0 && (
         <div className="empty">
           <div className="empty-icon">📁</div>
-          <div className="empty-text">Sin proyectos todavía<br/><span style={{fontSize:11,color:"#222"}}>Un proyecto = algo que requiere más de una acción</span></div>
+          <div className="empty-text">Sin proyectos todavía</div>
         </div>
       )}
       {projects.map(p => {
         const pItems = items.filter(i => i.projectId===p._id && i.bucket!=="archive" && i.bucket!=="trash");
-        const sc = p.status==="active"?"#34d399":p.status==="paused"?"#fbbf24":"#94a3b8";
+        const sc = p.status==="active"?"#059669":p.status==="paused"?"#d97706":"#64748b";
         const sl = p.status==="active"?"Activo":p.status==="paused"?"Pausado":"Completado";
         return (
-          <div key={p._id} className="proj-card" style={{"--pc":p.color||"#818cf8"}}>
+          <div key={p._id} className="proj-card" style={{"--pc":p.color||"#6366f1"}}>
             <div className="proj-title">{p.title}</div>
             {p.description && <div className="proj-desc">{p.description}</div>}
             <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
-              <span className="pill" style={{background:`${sc}18`,color:sc,border:`1px solid ${sc}40`}}>{sl}</span>
-              <span style={{fontSize:10,color:"#444"}}>{pItems.length} acciones pendientes</span>
+              <span className="pill" style={{background:`${sc}15`,color:sc,border:`1px solid ${sc}40`}}>{sl}</span>
+              <span style={{fontSize:10,color:"#94a3b8"}}>{pItems.length} acciones pendientes</span>
             </div>
             <div className="proj-actions">
               <button className="small-btn" onClick={() => onNewItem(p._id)}>+ Acción</button>
@@ -466,64 +748,10 @@ function ProjectsView({ projects, items, onEdit, onNew, onNewItem }) {
   );
 }
 
-// ── SETTINGS VIEW ─────────────────────────────────────────────────────────────
-function SettingsView({ items, projects, online }) {
-  const allTags = getAllTags(items);
-  return (
-    <div>
-      <div className="section-label">Sincronización</div>
-      <div className="info-block" style={{marginBottom:16}}>
-        <span style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{width:8,height:8,borderRadius:"50%",background:online?"#34d399":"#f87171",boxShadow:`0 0 6px ${online?"#34d399":"#f87171"}`,display:"inline-block"}}></span>
-          {online ? "✅ Conectado — sincroniza en tiempo real entre todos tus dispositivos." : "❌ Sin conexión — los cambios se guardarán al reconectarte."}
-        </span>
-      </div>
-      <div className="section-label">Resumen</div>
-      <div className="stats-grid">
-        {BUCKETS.map(b => (
-          <div key={b.id} className="stat-card">
-            <div style={{fontSize:20}}>{b.icon}</div>
-            <div className="stat-num" style={{color:b.color}}>{items.filter(i=>i.bucket===b.id).length}</div>
-            <div className="stat-lbl">{b.label}</div>
-          </div>
-        ))}
-        <div className="stat-card">
-          <div style={{fontSize:20}}>📁</div>
-          <div className="stat-num" style={{color:"#818cf8"}}>{projects.length}</div>
-          <div className="stat-lbl">Proyectos</div>
-        </div>
-        <div className="stat-card">
-          <div style={{fontSize:18,fontFamily:"'DM Mono',monospace",color:"#818cf8"}}>#</div>
-          <div className="stat-num" style={{color:"#818cf8"}}>{allTags.length}</div>
-          <div className="stat-lbl">Hashtags</div>
-        </div>
-      </div>
-      {allTags.length > 0 && <>
-        <div className="section-label">Todos los hashtags</div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:20}}>
-          {allTags.map(t => (
-            <span key={t} className="hashtag" style={{cursor:"default"}}>
-              {t}<span style={{marginLeft:5,opacity:0.5}}>{items.filter(i=>parseHashtags(i.hashtags).includes(t)).length}</span>
-            </span>
-          ))}
-        </div>
-      </>}
-      <div className="section-label">Flujo GTD</div>
-      <div className="info-block">
-        <strong>1. Capturar</strong> — Solo el título. Sin pensar. Todo afuera.<br/>
-        <strong>2. Procesar</strong> — ¿Qué es? ¿Requiere acción? ¿Cuál es la siguiente acción?<br/>
-        <strong>3. Organizar</strong> — Next Action, Agenda, Waiting, Archivar o Desechar.<br/>
-        <strong>4. Revisar</strong> — Revisión semanal de todas las bandejas.<br/>
-        <strong>5. Ejecutar</strong> — Elige qué hacer según contexto y energía.
-      </div>
-    </div>
-  );
-}
-
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [allDocs, setAllDocs] = useState(null);
-  const [view, setView] = useState("bucket");
+  const [view, setView] = useState("dashboard");
   const [bucket, setBucket] = useState("inbox");
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState("");
@@ -533,57 +761,36 @@ export default function App() {
   const [editItem, setEditItem] = useState(null);
   const [editProj, setEditProj] = useState(null);
   const [newItemProjId, setNewItemProjId] = useState("");
-  const [captureText, setCaptureText] = useState("");
   const [online, setOnline] = useState(navigator.onLine);
 
   useEffect(() => {
     const unsub = db.listen(docs => setAllDocs(docs));
-    const onOn = () => setOnline(true);
-    const onOff = () => setOnline(false);
-    window.addEventListener("online", onOn);
-    window.addEventListener("offline", onOff);
-    return () => { unsub(); window.removeEventListener("online", onOn); window.removeEventListener("offline", onOff); };
+    const on_ = () => setOnline(true);
+    const off_ = () => setOnline(false);
+    window.addEventListener("online", on_);
+    window.addEventListener("offline", off_);
+    return () => { unsub(); window.removeEventListener("online", on_); window.removeEventListener("offline", off_); };
   }, []);
 
-  if (allDocs === null) return <div className="loading">Cargando GTD...</div>;
+  if (allDocs === null) return <div className="loading"><span>⏳</span> Cargando GTD...</div>;
 
   const items = allDocs.filter(d => d.type === "item").sort((a,b) => b.updatedAt - a.updatedAt);
   const projects = allDocs.filter(d => d.type === "project").sort((a,b) => b.updatedAt - a.updatedAt);
   const unprocessed = items.filter(i => i.bucket === "inbox" && !i.processed);
 
-  const saveItem = async (doc_data) => { await db.put(doc_data); };
-  const saveProj = async (doc_data) => { await db.put(doc_data); };
+  const saveItem = async (d) => { await db.put(d); };
+  const saveProj = async (d) => { await db.put(d); };
   const delItem = async (id) => { await db.del(id); };
   const delProj = async (id) => {
-    for (const i of allDocs.filter(d => d.type==="item" && d.projectId===id)) await db.put({...i, projectId:""});
+    for (const i of allDocs.filter(d => d.type==="item" && d.projectId===id)) await db.put({...i,projectId:""});
     await db.del(id);
   };
   const moveTo = async (id, nb) => {
-    const item = allDocs.find(d => d._id === id);
-    if (item) await db.put({...item, bucket: nb});
+    const item = allDocs.find(d => d._id===id);
+    if (item) await db.put({...item,bucket:nb});
   };
   const handleTagClick = tag => { setActiveTag(p => p===tag?"":tag); setSearch(""); };
-
-  // Quick capture from inline bar
-  const quickCapture = async () => {
-    if (!captureText.trim()) return;
-    await db.put({ title: captureText.trim(), bucket: "inbox", type: "item", processed: false });
-    setCaptureText("");
-  };
-
-  const bkt = BUCKETS.find(b => b.id === bucket);
-  const visible = items.filter(i => {
-    if (view !== "bucket") return false;
-    if (i.bucket !== bucket) return false;
-    if (activeTag && !parseHashtags(i.hashtags).includes(activeTag)) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      if (!i.title?.toLowerCase().includes(q) && !i.notes?.toLowerCase().includes(q) &&
-          !i.hashtags?.toLowerCase().includes(q) && !i.context?.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
-  const bucketTags = [...new Set(items.filter(i=>i.bucket===bucket).flatMap(i=>parseHashtags(i.hashtags)))].sort();
+  const openEdit = (item) => { setEditItem(item); setShowProcess(true); };
 
   return (
     <>
@@ -593,109 +800,62 @@ export default function App() {
         {/* TOPBAR */}
         <div className="topbar">
           <div className="logo">GTD<span>.</span></div>
-          <div className="topbar-btns">
+          <div className="topbar-right">
             <div className={`sync-dot${online?"":" off"}`} title={online?"Sincronizado":"Sin conexión"} />
-            <button className={`topbtn${view==="projects"?" active":""}`} onClick={() => setView("projects")}>📁 Proyectos</button>
+            <button className={`topbtn${view==="dashboard"?" active":""}`} onClick={() => setView("dashboard")}>🏠 Dashboard</button>
+            <button className={`topbtn${view==="projects"?" active":""}`} onClick={() => setView("projects")}>📁</button>
             <button className={`topbtn${view==="settings"?" active":""}`} onClick={() => setView("settings")}>⚙️</button>
           </div>
         </div>
 
         {/* BUCKET NAV */}
-        {view === "bucket" && (
-          <div className="nav">
-            {BUCKETS.map(b => {
-              const count = items.filter(i=>i.bucket===b.id).length;
-              return (
-                <button key={b.id} className={`navbtn${bucket===b.id?" active":""}`}
-                  style={{"--bc":`${b.color}18`,"--bb":`${b.color}44`,"--bt":b.color}}
-                  onClick={() => { setBucket(b.id); setView("bucket"); setSearch(""); setActiveTag(""); }}>
-                  {b.icon} {b.label}
-                  {count > 0 && <span className="badge-count" style={{"--bt":b.color}}>{count}</span>}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <div className="nav">
+          {BUCKETS.map(b => {
+            const count = items.filter(i=>i.bucket===b.id).length;
+            const active = view==="bucket" && bucket===b.id;
+            return (
+              <button key={b.id} className={`navbtn${active?" active":""}`}
+                style={{"--bc":`${b.color}15`,"--bb":`${b.color}50`,"--bt":b.color}}
+                onClick={() => { setBucket(b.id); setView("bucket"); setSearch(""); setActiveTag(""); }}>
+                {b.icon} {b.label}
+                {count > 0 && <span className="badge-count" style={{"--bt":b.color}}>{count}</span>}
+              </button>
+            );
+          })}
+        </div>
 
         {/* MAIN */}
         <div className="main">
-          {view === "bucket" && (
-            <>
-              <div className="bucket-header">
-                <div className="bucket-name">{bkt?.icon} {bkt?.label}</div>
-                <div className="bucket-desc">{bkt?.desc}</div>
-              </div>
-
-              {/* CAPTURE BAR — solo en inbox */}
-              {bucket === "inbox" && (
-                <div className="capture-bar">
-                  <input className="capture-inp" placeholder="Capturar pensamiento..."
-                    value={captureText} onChange={e => setCaptureText(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && quickCapture()} />
-                  <button className="capture-btn" onClick={quickCapture}>+</button>
-                </div>
-              )}
-
-              {/* PROCESS BANNER */}
-              {bucket === "inbox" && unprocessed.length > 0 && (
-                <div className="process-banner" onClick={() => { setEditItem(unprocessed[0]); setShowProcess(true); }}>
-                  <span className="process-banner-text">⚡ Procesar bandeja de entrada</span>
-                  <span className="process-banner-count">{unprocessed.length} pendientes</span>
-                </div>
-              )}
-
-              <input className="search-inp" placeholder="/ buscar..."
-                value={search} onChange={e => { setSearch(e.target.value); setActiveTag(""); }} />
-
-              {bucketTags.length > 0 && (
-                <div className="filter-bar">
-                  {bucketTags.map(t => (
-                    <span key={t} className={`hashtag${activeTag===t?" active-filter":""}`}
-                      onClick={() => handleTagClick(t)}>{t}</span>
-                  ))}
-                  {activeTag && <button className="clear-filter" onClick={() => setActiveTag("")}>✕ quitar filtro</button>}
-                </div>
-              )}
-
-              {visible.length === 0 && (
-                <div className="empty">
-                  <div className="empty-icon">{bkt?.icon}</div>
-                  <div className="empty-text">{(search||activeTag)?"Sin resultados":"Esta bandeja está vacía"}</div>
-                </div>
-              )}
-              {visible.map(item => (
-                <ItemCard key={item._id} item={item} projects={projects}
-                  onEdit={i => { setEditItem(i); setShowProcess(true); }}
-                  onMoveTo={moveTo} onTagClick={handleTagClick} activeTag={activeTag} />
-              ))}
-            </>
+          {view === "dashboard" && (
+            <Dashboard items={items} projects={projects} onEdit={openEdit}
+              onNewItem={() => { setEditItem(null); setShowProcess(true); }}
+              onCapture={() => setShowCapture(true)} />
           )}
-
+          {view === "bucket" && (
+            <BucketView bucket={bucket} items={items} projects={projects} allItems={items}
+              onEdit={openEdit} onMoveTo={moveTo} onTagClick={handleTagClick}
+              activeTag={activeTag} search={search} setSearch={setSearch} setActiveTag={setActiveTag}
+              unprocessed={unprocessed} />
+          )}
           {view === "projects" && (
             <ProjectsView projects={projects} items={items}
               onEdit={p => { setEditProj(p); setShowProj(true); }}
               onNew={() => { setEditProj(null); setShowProj(true); }}
               onNewItem={pid => { setEditItem(null); setNewItemProjId(pid); setShowProcess(true); }} />
           )}
-
           {view === "settings" && <SettingsView items={items} projects={projects} online={online} />}
         </div>
 
-        {/* FAB — captura rápida desde cualquier vista */}
-        <button className="fab" onClick={() => setShowCapture(true)}>+</button>
+        {/* FAB */}
+        <button className="fab" onClick={() => setShowCapture(true)} title="Capturar">+</button>
 
         {/* MODALS */}
         {showCapture && (
-          <CaptureModal
-            onSave={async doc_data => { await saveItem(doc_data); }}
-            onClose={() => setShowCapture(false)} />
+          <CaptureModal onSave={async d => await saveItem(d)} onClose={() => setShowCapture(false)} />
         )}
         {showProcess && (
           <ProcessModal item={editItem} projects={projects} allItems={items}
-            onSave={async doc_data => {
-              if (newItemProjId && !doc_data.projectId) doc_data.projectId = newItemProjId;
-              await saveItem(doc_data);
-            }}
+            onSave={async d => { if (newItemProjId && !d.projectId) d.projectId = newItemProjId; await saveItem(d); }}
             onDelete={delItem}
             onClose={() => { setShowProcess(false); setEditItem(null); setNewItemProjId(""); }} />
         )}
