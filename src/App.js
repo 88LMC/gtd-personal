@@ -1073,7 +1073,6 @@ export default function App() {
               placeholder="Buscar título, #hashtag, @contexto, responsable..."
               value={globalSearch}
               onChange={e => setGlobalSearch(e.target.value)}
-              onFocus={() => setSearchFocused(true)}
               onKeyDown={e => e.key === "Escape" && setGlobalSearch("")}
             />
             {globalSearch && <button className="gsearch-clear" onClick={() => setGlobalSearch("")}>✕</button>}
