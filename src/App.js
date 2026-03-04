@@ -247,6 +247,10 @@ const css = `
   .gsearch-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: #e4e7ef; border: none; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 10px; color: #64748b; }
   .gsearch-clear:hover { background: #cbd5e1; }
 
+  /* DONE BUTTON */
+  .done-btn { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #cbd5e1; background: transparent; color: #cbd5e1; font-size: 10px; cursor: pointer; flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; padding: 0; }
+  .done-btn:hover { border-color: #059669; color: #059669; background: #f0fdf4; transform: scale(1.15); }
+
   /* SEARCH RESULTS VIEW */
   .search-results { }
   .search-results-header { font-size: 12px; color: #94a3b8; margin-bottom: 14px; font-family: 'DM Mono', monospace; }
@@ -302,7 +306,6 @@ function GlobalSearchResults({ query, items, projects, onEdit }) {
           {gItems.map(item => {
             const project = projects.find(p => p._id === item.projectId);
             const priority = PRIORITIES.find(p => p.id === item.priority);
-            
             return (
               <div key={item._id} className="card" style={{borderLeft:`3px solid ${b.color}`}} onClick={() => onEdit(item)}>
                 <div className="card-title"><Highlight text={item.title} query={q} /></div>
@@ -533,7 +536,7 @@ function ProjectForm({ project, onSave, onDelete, onClose }) {
 }
 
 // ── DASH ITEM ─────────────────────────────────────────────────────────────────
-function DashItem({ item, projects, onEdit }) {
+function DashItem({ item, projects, onEdit, onDone }) {
   const project = projects.find(p => p._id === item.projectId);
   const priority = PRIORITIES.find(p => p.id === item.priority);
   const diff = getDaysInfo(item.dueDate);
@@ -543,7 +546,11 @@ function DashItem({ item, projects, onEdit }) {
   return (
     <div className={`dash-item${isOverdue?" dash-item-overdue":isToday?" dash-item-today":""}`}
       onClick={() => onEdit(item)}>
-      <div className="dash-item-dot" style={{background: priority?.color || "#94a3b8"}} />
+      {/* CHECK BUTTON */}
+      <button className="done-btn" title="Marcar como hecha"
+        onClick={e => { e.stopPropagation(); onDone(item._id); }}>
+        ○
+      </button>
       <div className="dash-item-body">
         <div className="dash-item-title">{item.title}</div>
         <div className="dash-item-meta">
@@ -561,7 +568,7 @@ function DashItem({ item, projects, onEdit }) {
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function Dashboard({ items, projects, onEdit, onNewItem, onCapture }) {
+function Dashboard({ items, projects, onEdit, onDone, onNewItem, onCapture }) {
   const agenda = items.filter(i => i.bucket === "agenda" && i.processed)
     .sort((a,b) => {
       const da = getDaysInfo(a.dueDate) ?? -9999;
@@ -620,7 +627,7 @@ function Dashboard({ items, projects, onEdit, onNewItem, onCapture }) {
           <div className="dash-items">
             {agenda.length === 0
               ? <div className="dash-empty">Sin items en agenda</div>
-              : agenda.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} />)
+              : agenda.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} onDone={onDone} />)
             }
           </div>
         </div>
@@ -634,7 +641,7 @@ function Dashboard({ items, projects, onEdit, onNewItem, onCapture }) {
           <div className="dash-items">
             {next.length === 0
               ? <div className="dash-empty">Sin next actions</div>
-              : next.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} />)
+              : next.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} onDone={onDone} />)
             }
           </div>
         </div>
@@ -648,7 +655,7 @@ function Dashboard({ items, projects, onEdit, onNewItem, onCapture }) {
           <div className="dash-items">
             {waiting.length === 0
               ? <div className="dash-empty">Nada esperando</div>
-              : waiting.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} />)
+              : waiting.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} onDone={onDone} />)
             }
           </div>
         </div>
@@ -658,7 +665,7 @@ function Dashboard({ items, projects, onEdit, onNewItem, onCapture }) {
 }
 
 // ── BUCKET VIEW ───────────────────────────────────────────────────────────────
-function BucketView({ bucket, items, projects, allItems, onEdit, onMoveTo, onTagClick, activeTag, search, setSearch, setActiveTag, unprocessed }) {
+function BucketView({ bucket, items, projects, allItems, onEdit, onMoveTo, onDone, onTagClick, activeTag, search, setSearch, setActiveTag, unprocessed }) {
   const bkt = BUCKETS.find(b => b.id === bucket);
   const bucketTags = [...new Set(items.filter(i=>i.bucket===bucket).flatMap(i=>parseHashtags(i.hashtags)))].sort();
   const visible = items.filter(i => {
@@ -736,7 +743,9 @@ function BucketView({ bucket, items, projects, allItems, onEdit, onMoveTo, onTag
             </div>
             {item.processed && (
               <div className="quick-moves" onClick={e => e.stopPropagation()}>
-                {BUCKETS.filter(b => b.id !== item.bucket).map(b => (
+                <button className="qbtn" style={{color:"#059669",borderColor:"#86efac",background:"#f0fdf4"}}
+                  onClick={() => onDone(item._id)}>✅ Hecha</button>
+                {BUCKETS.filter(b => b.id !== item.bucket && b.id !== "archive").map(b => (
                   <button key={b.id} className="qbtn" onClick={() => onMoveTo(item._id, b.id)}>→ {b.icon} {b.label}</button>
                 ))}
               </div>
@@ -810,7 +819,7 @@ function SettingsView({ items, projects, online }) {
 }
 
 // ── PROJECT MINI DASHBOARD ────────────────────────────────────────────────────
-function ProjectDashboard({ project, items, onEdit, onNewItem, onBack }) {
+function ProjectDashboard({ project, items, onEdit, onDone, onNewItem, onBack }) {
   const pItems = items.filter(i => i.projectId === project._id);
   const agenda = pItems.filter(i => i.bucket === "agenda" && i.processed)
     .sort((a,b) => (getDaysInfo(b.dueDate)??-9999) - (getDaysInfo(a.dueDate)??-9999));
@@ -885,7 +894,7 @@ function ProjectDashboard({ project, items, onEdit, onNewItem, onBack }) {
           <div className="dash-items">
             {agenda.length === 0
               ? <div className="dash-empty">Sin items en agenda</div>
-              : agenda.map(i => <DashItem key={i._id} item={i} projects={[project]} onEdit={onEdit} />)}
+              : agenda.map(i => <DashItem key={i._id} item={i} projects={[project]} onEdit={onEdit} onDone={onDone} />)}
           </div>
         </div>
 
@@ -901,7 +910,7 @@ function ProjectDashboard({ project, items, onEdit, onNewItem, onBack }) {
           <div className="dash-items">
             {next.length === 0
               ? <div className="dash-empty">Sin next actions</div>
-              : next.map(i => <DashItem key={i._id} item={i} projects={[project]} onEdit={onEdit} />)}
+              : next.map(i => <DashItem key={i._id} item={i} projects={[project]} onEdit={onEdit} onDone={onDone} />)}
           </div>
         </div>
 
@@ -917,7 +926,7 @@ function ProjectDashboard({ project, items, onEdit, onNewItem, onBack }) {
           <div className="dash-items">
             {waiting.length === 0
               ? <div className="dash-empty">Nada esperando</div>
-              : waiting.map(i => <DashItem key={i._id} item={i} projects={[project]} onEdit={onEdit} />)}
+              : waiting.map(i => <DashItem key={i._id} item={i} projects={[project]} onEdit={onEdit} onDone={onDone} />)}
           </div>
         </div>
       </div>
@@ -926,10 +935,9 @@ function ProjectDashboard({ project, items, onEdit, onNewItem, onBack }) {
 }
 
 // ── PROJECTS VIEW ─────────────────────────────────────────────────────────────
-function ProjectsView({ projects, items, onEdit, onNew, onEditProj, onNewItem }) {
+function ProjectsView({ projects, items, onEdit, onDone, onNew, onEditProj, onNewItem }) {
   const [selectedProject, setSelectedProject] = useState(null);
 
-  // Si hay proyecto seleccionado mostrar su dashboard
   if (selectedProject) {
     const proj = projects.find(p => p._id === selectedProject);
     if (proj) return (
@@ -937,6 +945,7 @@ function ProjectsView({ projects, items, onEdit, onNew, onEditProj, onNewItem })
         project={proj}
         items={items}
         onEdit={onEdit}
+        onDone={onDone}
         onNewItem={onNewItem}
         onBack={() => setSelectedProject(null)}
       />
@@ -1048,6 +1057,10 @@ export default function App() {
   const saveItem = async (d) => { await db.put(d); };
   const saveProj = async (d) => { await db.put(d); };
   const delItem = async (id) => { await db.del(id); };
+  const markDone = async (id) => {
+    const item = allDocs.find(d => d._id === id);
+    if (item) await db.put({ ...item, bucket: "archive", processed: true });
+  };
   const delProj = async (id) => {
     for (const i of allDocs.filter(d => d.type==="item" && d.projectId===id)) await db.put({...i,projectId:""});
     await db.del(id);
@@ -1073,6 +1086,7 @@ export default function App() {
               placeholder="Buscar título, #hashtag, @contexto, responsable..."
               value={globalSearch}
               onChange={e => setGlobalSearch(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
               onKeyDown={e => e.key === "Escape" && setGlobalSearch("")}
             />
             {globalSearch && <button className="gsearch-clear" onClick={() => setGlobalSearch("")}>✕</button>}
@@ -1106,17 +1120,17 @@ export default function App() {
           {globalSearch.trim() ? (
             <GlobalSearchResults query={globalSearch} items={items} projects={projects} onEdit={openEdit} />
           ) : view === "dashboard" ? (
-            <Dashboard items={items} projects={projects} onEdit={openEdit}
+            <Dashboard items={items} projects={projects} onEdit={openEdit} onDone={markDone}
               onNewItem={() => { setEditItem(null); setShowProcess(true); }}
               onCapture={() => setShowCapture(true)} />
           ) : view === "bucket" ? (
             <BucketView bucket={bucket} items={items} projects={projects} allItems={items}
-              onEdit={openEdit} onMoveTo={moveTo} onTagClick={handleTagClick}
+              onEdit={openEdit} onMoveTo={moveTo} onDone={markDone} onTagClick={handleTagClick}
               activeTag={activeTag} search={search} setSearch={setSearch} setActiveTag={setActiveTag}
               unprocessed={unprocessed} />
           ) : view === "projects" ? (
             <ProjectsView projects={projects} items={items}
-              onEdit={openEdit}
+              onEdit={openEdit} onDone={markDone}
               onNew={() => { setEditProj(null); setShowProj(true); }}
               onEditProj={p => { setEditProj(p); setShowProj(true); }}
               onNewItem={(pid, defaultBucket) => {
