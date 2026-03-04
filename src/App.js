@@ -302,7 +302,7 @@ function GlobalSearchResults({ query, items, projects, onEdit }) {
           {gItems.map(item => {
             const project = projects.find(p => p._id === item.projectId);
             const priority = PRIORITIES.find(p => p.id === item.priority);
-            const diff = getDaysInfo(item.dueDate);
+            
             return (
               <div key={item._id} className="card" style={{borderLeft:`3px solid ${b.color}`}} onClick={() => onEdit(item)}>
                 <div className="card-title"><Highlight text={item.title} query={q} /></div>
@@ -1022,7 +1022,6 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState("");
   const [globalSearch, setGlobalSearch] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
   const [showCapture, setShowCapture] = useState(false);
   const [showProcess, setShowProcess] = useState(false);
   const [showProj, setShowProj] = useState(false);
