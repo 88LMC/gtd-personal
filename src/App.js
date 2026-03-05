@@ -446,10 +446,12 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
             <input className="inp" type="date" value={f.dueDate} onChange={e => set("dueDate", e.target.value)} />
           </>}
           {f.bucket === "waiting" && <>
-            <label className="field-label">Esperando a</label>
-            <input className="inp" placeholder="Nombre o empresa..." value={f.waitingFor}
-              onChange={e => set("waitingFor", e.target.value)} />
-          </>}
+  <label className="field-label">Esperando a</label>
+  <input className="inp" placeholder="Nombre o empresa..." value={f.waitingFor}
+    onChange={e => set("waitingFor", e.target.value)} />
+  <label className="field-label">Seguimiento — ¿cuándo contactar?</label>
+  <input className="inp" type="date" value={f.dueDate} onChange={e => set("dueDate", e.target.value)} />
+</>}
         </div>
         <hr className="divider" />
 
