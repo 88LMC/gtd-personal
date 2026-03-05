@@ -1066,7 +1066,7 @@ function CalendarView({ items, projects, onEdit }) {
   const [calView, setCalView] = useState("week"); // week | day | month
   const [refDate, setRefDate] = useState(new Date());
 
-  const agendaItems = items.filter(i => i.bucket === "agenda" && i.dueDate);
+ const agendaItems = items.filter(i => (i.bucket === "agenda" || i.bucket === "waiting") && i.dueDate);
 
   // ── helpers ──
   const startOfWeek = (d) => {
