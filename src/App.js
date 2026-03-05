@@ -236,6 +236,40 @@ const css = `
   .info-block strong { color: #1e293b; }
   .divider { border: none; border-top: 1px solid #f1f5f9; margin: 14px 0; }
   input[type=date]::-webkit-calendar-picker-indicator { cursor: pointer; }
+
+  /* CALENDAR */
+  .cal-switcher { display: flex; align-items: center; gap: 6px; margin-bottom: 16px; }
+  .cal-switch-btn { background: #f1f5f9; border: 1px solid #e4e7ef; border-radius: 8px; color: #64748b; font-size: 12px; font-weight: 700; padding: 6px 14px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+  .cal-switch-btn.active { background: #6366f1; border-color: #6366f1; color: #fff; }
+  .cal-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .cal-nav-btn { background: #f1f5f9; border: 1px solid #e4e7ef; border-radius: 8px; color: #64748b; font-size: 18px; width: 32px; height: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; }
+  .cal-nav-btn:hover { background: #e4e7ef; }
+  .cal-nav-label { font-size: 14px; font-weight: 700; color: #1e293b; flex: 1; text-align: center; }
+  .cal-today-btn { background: #eef0fd; border: 1px solid #c7d2fe; border-radius: 8px; color: #6366f1; font-size: 11px; font-weight: 700; padding: 5px 12px; cursor: pointer; font-family: inherit; }
+
+  .cal-week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-day-col { background: #fff; border: 1px solid #e4e7ef; border-radius: 10px; min-height: 140px; overflow: hidden; }
+  .cal-day-col.cal-today { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+  .cal-day-header { display: flex; flex-direction: column; align-items: center; padding: 8px 4px 6px; border-bottom: 1px solid #f1f5f9; }
+  .cal-day-name { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; margin-bottom: 2px; }
+  .cal-day-num { font-size: 15px; font-weight: 800; color: #475569; }
+  .cal-day-num-today { background: #6366f1; color: #fff; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .cal-day-items { padding: 4px; display: flex; flex-direction: column; gap: 3px; }
+  .cal-empty-day { height: 20px; }
+  .cal-item { border-radius: 5px; padding: 4px 6px; cursor: pointer; transition: opacity 0.12s; }
+  .cal-item:hover { opacity: 0.8; }
+  .cal-item-title { font-size: 10px; font-weight: 600; color: #1e293b; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .cal-month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .cal-month-dayname { text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; padding: 6px 0; }
+  .cal-month-cell { background: #fff; border: 1px solid #f1f5f9; border-radius: 8px; min-height: 90px; padding: 6px; cursor: pointer; transition: border-color 0.12s; }
+  .cal-month-cell:hover { border-color: #c7d2fe; }
+  .cal-today-cell { border-color: #6366f1 !important; background: #fafafe; }
+  .cal-out-month { background: #f8f9fc; opacity: 0.5; }
+  .cal-month-num { font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 4px; }
+  .cal-month-items { display: flex; flex-direction: column; gap: 2px; }
+  .cal-month-pill { font-size: 10px; font-weight: 600; color: #1e293b; padding: 2px 5px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  .cal-month-more { font-size: 9px; color: #94a3b8; font-weight: 600; padding: 1px 4px; }
   .loading { display: flex; align-items: center; justify-content: center; height: 100vh; background: #f8f9fc; color: #94a3b8; font-size: 14px; font-family: 'Bricolage Grotesque', sans-serif; gap: 10px; }
 
   /* GLOBAL SEARCH */
@@ -538,7 +572,6 @@ function ProjectForm({ project, onSave, onDelete, onClose }) {
 // ── DASH ITEM ─────────────────────────────────────────────────────────────────
 function DashItem({ item, projects, onEdit, onDone }) {
   const project = projects.find(p => p._id === item.projectId);
-  const priority = PRIORITIES.find(p => p.id === item.priority);
   const diff = getDaysInfo(item.dueDate);
   const isOverdue = diff !== null && diff > 0;
   const isToday = diff === 0;
@@ -1023,6 +1056,205 @@ function ProjectsView({ projects, items, onEdit, onDone, onNew, onEditProj, onNe
   );
 }
 
+// ── CALENDAR VIEW ─────────────────────────────────────────────────────────────
+const DAYS_ES = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+const MONTHS_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+function CalendarView({ items, projects, onEdit }) {
+  const [calView, setCalView] = useState("week"); // week | day | month
+  const [refDate, setRefDate] = useState(new Date());
+
+  const agendaItems = items.filter(i => i.bucket === "agenda" && i.dueDate);
+
+  // ── helpers ──
+  const startOfWeek = (d) => {
+    const s = new Date(d); s.setHours(0,0,0,0);
+    s.setDate(s.getDate() - s.getDay()); return s;
+  };
+  const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate()+n); return r; };
+  const toYMD = (d) => d.toISOString().slice(0,10);
+  const today = toYMD(new Date());
+
+  const itemsForDate = (ymd) =>
+    agendaItems.filter(i => i.dueDate === ymd)
+      .sort((a,b) => ({high:0,med:1,low:2}[a.priority]||1) - ({high:0,med:1,low:2}[b.priority]||1));
+
+  // navigate
+  const nav = (dir) => {
+    const d = new Date(refDate);
+    if (calView === "day")   d.setDate(d.getDate() + dir);
+    if (calView === "week")  d.setDate(d.getDate() + dir*7);
+    if (calView === "month") d.setMonth(d.getMonth() + dir);
+    setRefDate(d);
+  };
+
+  // ── WEEK ──
+  const WeekView = () => {
+    const start = startOfWeek(refDate);
+    const days = Array.from({length:7}, (_,i) => addDays(start,i));
+    const label = `${days[0].getDate()} ${MONTHS_ES[days[0].getMonth()]} – ${days[6].getDate()} ${MONTHS_ES[days[6].getMonth()]} ${days[6].getFullYear()}`;
+    return (
+      <>
+        <div className="cal-nav">
+          <button className="cal-nav-btn" onClick={() => nav(-1)}>‹</button>
+          <span className="cal-nav-label">{label}</span>
+          <button className="cal-nav-btn" onClick={() => nav(1)}>›</button>
+          <button className="cal-today-btn" onClick={() => setRefDate(new Date())}>Hoy</button>
+        </div>
+        <div className="cal-week-grid">
+          {days.map(d => {
+            const ymd = toYMD(d);
+            const isToday = ymd === today;
+            const dayItems = itemsForDate(ymd);
+            return (
+              <div key={ymd} className={`cal-day-col${isToday?" cal-today":""}`}>
+                <div className="cal-day-header">
+                  <span className="cal-day-name">{DAYS_ES[d.getDay()]}</span>
+                  <span className={`cal-day-num${isToday?" cal-day-num-today":""}`}>{d.getDate()}</span>
+                </div>
+                <div className="cal-day-items">
+                  {dayItems.length === 0
+                    ? <div className="cal-empty-day" />
+                    : dayItems.map(i => <CalItem key={i._id} item={i} projects={projects} onEdit={onEdit} />)
+                  }
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+  };
+
+  // ── DAY ──
+  const DayView = () => {
+    const ymd = toYMD(refDate);
+    const dayItems = itemsForDate(ymd);
+    const label = `${DAYS_ES[refDate.getDay()]} ${refDate.getDate()} de ${MONTHS_ES[refDate.getMonth()]} ${refDate.getFullYear()}`;
+    return (
+      <>
+        <div className="cal-nav">
+          <button className="cal-nav-btn" onClick={() => nav(-1)}>‹</button>
+          <span className="cal-nav-label">{label}</span>
+          <button className="cal-nav-btn" onClick={() => nav(1)}>›</button>
+          <button className="cal-today-btn" onClick={() => setRefDate(new Date())}>Hoy</button>
+        </div>
+        <div style={{background:"#fff",border:"1px solid #e4e7ef",borderRadius:14,padding:16,minHeight:200}}>
+          {dayItems.length === 0
+            ? <div className="empty"><div className="empty-icon">📅</div><div className="empty-text">Sin actividades este día</div></div>
+            : dayItems.map(i => <CalItemFull key={i._id} item={i} projects={projects} onEdit={onEdit} />)
+          }
+        </div>
+      </>
+    );
+  };
+
+  // ── MONTH ──
+  const MonthView = () => {
+    const year = refDate.getFullYear();
+    const month = refDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month+1, 0);
+    const startPad = firstDay.getDay();
+    const totalCells = Math.ceil((startPad + lastDay.getDate()) / 7) * 7;
+    const cells = Array.from({length: totalCells}, (_,i) => {
+      const d = new Date(year, month, 1 - startPad + i);
+      return d;
+    });
+    return (
+      <>
+        <div className="cal-nav">
+          <button className="cal-nav-btn" onClick={() => nav(-1)}>‹</button>
+          <span className="cal-nav-label">{MONTHS_ES[month]} {year}</span>
+          <button className="cal-nav-btn" onClick={() => nav(1)}>›</button>
+          <button className="cal-today-btn" onClick={() => setRefDate(new Date())}>Hoy</button>
+        </div>
+        <div className="cal-month-grid">
+          {DAYS_ES.map(d => <div key={d} className="cal-month-dayname">{d}</div>)}
+          {cells.map((d,i) => {
+            const ymd = toYMD(d);
+            const inMonth = d.getMonth() === month;
+            const isToday = ymd === today;
+            const dayItems = itemsForDate(ymd);
+            return (
+              <div key={i} className={`cal-month-cell${!inMonth?" cal-out-month":""}${isToday?" cal-today-cell":""}`}
+                onClick={() => { setRefDate(new Date(d)); setCalView("day"); }}>
+                <div className={`cal-month-num${isToday?" cal-day-num-today":""}`}>{d.getDate()}</div>
+                <div className="cal-month-items">
+                  {dayItems.slice(0,3).map(i => {
+                    const pr = PRIORITIES.find(p => p.id === i.priority);
+                    return (
+                      <div key={i._id} className="cal-month-pill"
+                        style={{background:`${pr?.color||"#6366f1"}15`,borderLeft:`2px solid ${pr?.color||"#6366f1"}`}}
+                        onClick={e => { e.stopPropagation(); onEdit(i); }}>
+                        {i.title}
+                      </div>
+                    );
+                  })}
+                  {dayItems.length > 3 && <div className="cal-month-more">+{dayItems.length-3} más</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+  };
+
+  return (
+    <div>
+      {/* VIEW SWITCHER */}
+      <div className="cal-switcher">
+        {[["day","Día"],["week","Semana"],["month","Mes"]].map(([id,lbl]) => (
+          <button key={id} className={`cal-switch-btn${calView===id?" active":""}`}
+            onClick={() => setCalView(id)}>{lbl}</button>
+        ))}
+        <span style={{marginLeft:"auto",fontSize:11,color:"#94a3b8"}}>
+          {agendaItems.length} actividades en agenda
+        </span>
+      </div>
+
+      {calView === "week"  && <WeekView />}
+      {calView === "day"   && <DayView />}
+      {calView === "month" && <MonthView />}
+    </div>
+  );
+}
+
+// small inline pill for week/month
+function CalItem({ item, projects, onEdit }) {
+  const pr = PRIORITIES.find(p => p.id === item.priority);
+  const diff = getDaysInfo(item.dueDate);
+  const color = diff > 0 ? "#dc2626" : diff === 0 ? "#d97706" : pr?.color || "#6366f1";
+  return (
+    <div className="cal-item" style={{borderLeft:`3px solid ${color}`,background:`${color}0d`}} onClick={() => onEdit(item)}>
+      <div className="cal-item-title">{item.title}</div>
+      {item.waitingFor && <div style={{fontSize:9,color:"#7c3aed"}}>⏳ {item.waitingFor}</div>}
+    </div>
+  );
+}
+
+// full row for day view
+function CalItemFull({ item, projects, onEdit }) {
+  const project = projects.find(p => p._id === item.projectId);
+  const pr = PRIORITIES.find(p => p.id === item.priority);
+  const diff = getDaysInfo(item.dueDate);
+  const color = diff > 0 ? "#dc2626" : diff === 0 ? "#d97706" : pr?.color || "#6366f1";
+  return (
+    <div className="card" style={{borderLeft:`3px solid ${color}`,marginBottom:8,cursor:"pointer"}} onClick={() => onEdit(item)}>
+      <div className="card-title">{item.title}</div>
+      <div className="card-meta">
+        <DaysTag dueDate={item.dueDate} />
+        {pr && <span className="pill" style={{background:`${pr.color}15`,color:pr.color,border:`1px solid ${pr.color}40`}}>{pr.label}</span>}
+        {project && <span className="pill" style={{background:`${project.color||"#6366f1"}15`,color:project.color||"#6366f1",border:`1px solid ${project.color||"#6366f1"}40`}}>📁 {project.title}</span>}
+        {item.context && <span style={{fontSize:10,color:"#6366f1",fontFamily:"'DM Mono',monospace"}}>{item.context}</span>}
+        {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ {item.waitingFor}</span>}
+        {parseHashtags(item.hashtags).map(t => <span key={t} className="hashtag" style={{cursor:"default"}}>{t}</span>)}
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [allDocs, setAllDocs] = useState(null);
@@ -1086,13 +1318,13 @@ export default function App() {
               placeholder="Buscar título, #hashtag, @contexto, responsable..."
               value={globalSearch}
               onChange={e => setGlobalSearch(e.target.value)}
-              onFocus={() => setSearchFocused(true)}
               onKeyDown={e => e.key === "Escape" && setGlobalSearch("")}
             />
             {globalSearch && <button className="gsearch-clear" onClick={() => setGlobalSearch("")}>✕</button>}
           </div>
           <div className="topbar-right">
             <div className={`sync-dot${online?"":" off"}`} title={online?"Sincronizado":"Sin conexión"} />
+            <button className={`topbtn${view==="calendar"?" active":""}`} onClick={() => { setView("calendar"); setGlobalSearch(""); }}>📆</button>
             <button className={`topbtn${view==="dashboard"?" active":""}`} onClick={() => { setView("dashboard"); setGlobalSearch(""); }}>🏠</button>
             <button className={`topbtn${view==="projects"?" active":""}`} onClick={() => { setView("projects"); setGlobalSearch(""); }}>📁</button>
             <button className={`topbtn${view==="settings"?" active":""}`} onClick={() => { setView("settings"); setGlobalSearch(""); }}>⚙️</button>
@@ -1138,6 +1370,8 @@ export default function App() {
                 setNewItemProjId(pid);
                 setShowProcess(true);
               }} />
+          ) : view === "calendar" ? (
+            <CalendarView items={items} projects={projects} onEdit={openEdit} />
           ) : view === "settings" ? (
             <SettingsView items={items} projects={projects} online={online} />
           ) : null}
