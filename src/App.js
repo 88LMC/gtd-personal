@@ -590,7 +590,7 @@ function DashItem({ item, projects, onEdit, onDone }) {
         <div className="dash-item-title">{item.title}</div>
         <div className="dash-item-meta">
           {item.dueDate && <DaysTag dueDate={item.dueDate} />}
-          {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ {item.waitingFor}</span>}
+          {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ @{item.waitingFor}</span>}
           {project && <span style={{fontSize:10,color:project.color||"#6366f1",fontWeight:600}}>📁 {project.title}</span>}
           {item.context && <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{item.context}</span>}
           {parseHashtags(item.hashtags).map(t => (
@@ -770,7 +770,7 @@ function BucketView({ bucket, items, projects, allItems, onEdit, onMoveTo, onDon
               {priority && item.processed && <span className="pill" style={{background:`${priority.color}15`,color:priority.color,border:`1px solid ${priority.color}40`}}>{priority.label}</span>}
               {project && <span className="pill" style={{background:`${project.color||"#6366f1"}15`,color:project.color||"#6366f1",border:`1px solid ${project.color||"#6366f1"}40`}}>📁 {project.title}</span>}
               {item.context && <span style={{fontSize:10,color:"#6366f1",fontFamily:"'DM Mono',monospace"}}>{item.context}</span>}
-              {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ {item.waitingFor}</span>}
+              {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ @{item.waitingFor}</span>}
               {tags.map(t => (
                 <span key={t} className={`hashtag${activeTag===t?" active-filter":""}`}
                   onClick={e => { e.stopPropagation(); onTagClick(t); }}>{t}</span>
@@ -1231,7 +1231,7 @@ function CalItem({ item, projects, onEdit }) {
   return (
     <div className="cal-item" style={{borderLeft:`3px solid ${color}`,background:`${color}0d`}} onClick={() => onEdit(item)}>
       <div className="cal-item-title">{item.title}</div>
-      {item.waitingFor && <div style={{fontSize:9,color:"#7c3aed"}}>⏳ {item.waitingFor}</div>}
+     {item.waitingFor && <div style={{fontSize:9,color:"#7c3aed",fontWeight:700}}>⏳ @{item.waitingFor}</div>}
     </div>
   );
 }
@@ -1250,7 +1250,7 @@ function CalItemFull({ item, projects, onEdit }) {
         {pr && <span className="pill" style={{background:`${pr.color}15`,color:pr.color,border:`1px solid ${pr.color}40`}}>{pr.label}</span>}
         {project && <span className="pill" style={{background:`${project.color||"#6366f1"}15`,color:project.color||"#6366f1",border:`1px solid ${project.color||"#6366f1"}40`}}>📁 {project.title}</span>}
         {item.context && <span style={{fontSize:10,color:"#6366f1",fontFamily:"'DM Mono',monospace"}}>{item.context}</span>}
-        {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ {item.waitingFor}</span>}
+        {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ @{item.waitingFor}</span>}
         {parseHashtags(item.hashtags).map(t => <span key={t} className="hashtag" style={{cursor:"default"}}>{t}</span>)}
       </div>
     </div>
