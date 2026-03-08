@@ -777,14 +777,14 @@ function BucketView({ bucket, items, projects, allItems, onEdit, onMoveTo, onDon
               ))}
             </div>
             {item.processed && (
-              <div className="quick-moves" onClick={e => e.stopPropagation()}>
-                <button className="qbtn" style={{color:"#059669",borderColor:"#86efac",background:"#f0fdf4"}}
-                  onClick={() => onDone(item._id)}>✅ Hecha</button>
-                {BUCKETS.filter(b => b.id !== item.bucket && b.id !== "archive").map(b => (
-                  <button key={b.id} className="qbtn" onClick={() => onMoveTo(item._id, b.id)}>→ {b.icon} {b.label}</button>
-                ))}
-              </div>
-            )}
+  <div className="quick-moves" onClick={e => e.stopPropagation()}>
+    <button className="qbtn" style={{color:"#059669",borderColor:"#86efac",background:"#f0fdf4"}}
+      onClick={() => onMoveTo(item._id, "archive")}>✅ Hecha</button>
+    {BUCKETS.filter(b => b.id !== item.bucket && b.id !== "archive").map(b => (
+      <button key={b.id} className="qbtn" onClick={() => onMoveTo(item._id, b.id)}>→ {b.icon} {b.label}</button>
+    ))}
+  </div>
+)}
           </div>
         );
       })}
