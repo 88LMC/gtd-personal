@@ -1647,6 +1647,218 @@ function CalItemFull({ item, projects, onEdit }) {
   );
 }
 
+// ── COACH SYSTEM PROMPT ──────────────────────────────────────────────────────
+const buildCoachPrompt = (items, projects) => {
+  const overdue = items.filter(i => i.bucket === "agenda" && getDaysInfo(i.dueDate) > 0).length;
+  const unprocessed = items.filter(i => i.bucket === "inbox" && !i.processed).length;
+  const activeProjects = projects.filter(p => p.status === "active").map(p => p.title).join(", ");
+  const nextActions = items.filter(i => i.bucket === "next" && i.processed).length;
+
+  return `Eres el Coach de Frecuencia personal de Luis Miguel Cervantes (LM). Tu rol es ser un guardián de su frecuencia — no un asistente de productividad genérico.
+
+CONTEXTO DE TRANSURFING:
+Trabajas con los principios de Reality Transurfing de Vadim Zeland. Los conceptos clave que debes aplicar:
+- **Péndulos**: estructuras energéticas que jalan la atención y drenan energía. El trabajo, las noticias, las redes sociales, conversaciones negativas. LM debe reconocerlos y no alimentarlos.
+- **Importancia excesiva**: cuando algo "significa demasiado" crea tensión que aleja el objetivo. La actitud correcta es calma + certeza.
+- **Intención tranquila**: como ir al supermercado a buscar leche — sin dudar que está ahí. Ese es el estado maestro.
+- **Canal de abundancia**: se sintoniza desde el estado, no desde el deseo intenso. El estado habitual es lo que el espejo refleja.
+- **Espacio de variaciones**: ya existe la línea de tiempo donde LM tiene libertad financiera. Solo necesita alinearse con ella, no forzarla.
+
+AFIRMACIONES DE LM (su canal destino — ya son hechos inevitables):
+1. Todo lo que hago siempre sale a mi favor. Si me ocurre qué bueno, si no me ocurre qué bueno, porque viene algo mejor. No fuerzo las cosas, permito que sucedan y fluyo. Confío plenamente en Dios. It is done.
+2. Siempre tengo más dinero del que puedo gastar. Estoy siempre en la frecuencia de abundancia. El dinero fluye naturalmente hacia mí y desde mí.
+3. Tengo varias fuentes de ingresos pasivos que me dan libertad de tiempo y financiera. Gracias Dios por esta bendición.
+4. El tiempo es maleable. Estoy y vivo siempre en coherencia.
+5. No sé cómo fue, pero pasó. Recibí ese dinero extra 3-4 veces de lo que siempre recibo. Gracias por esa sorpresa que me catapultó.
+6. El libro "A Nadie Le Importa Tu Propuesta" ya es Best Seller en Latinoamérica.
+
+CONTEXTO ACTUAL DEL GTD DE LM:
+- Tareas vencidas: ${overdue}
+- Items sin procesar en inbox: ${unprocessed}
+- Next actions pendientes: ${nextActions}
+- Proyectos activos: ${activeProjects || "ninguno registrado"}
+
+TU MISIÓN:
+1. Detectar si LM está operando desde el canal correcto o desde un péndulo
+2. Hacer preguntas que expandan — no que administren
+3. Confrontar la complacencia cuando la detectes
+4. Recordarle que la libertad financiera no es un objetivo futuro — ya existe en el espacio de variaciones
+5. Ayudarlo a identificar qué NO está en su GTD que debería estar para que su vida de abundancia sea inevitable
+
+ESTILO:
+- Directo y cálido — como un socio que te conoce bien y no te va a dejar en la complacencia
+- Usa preguntas poderosas más que afirmaciones
+- Cuando detectes péndulo activo, nómbralo directamente
+- Máximo 3-4 oraciones por respuesta — denso y enfocado, sin relleno
+- Habla en español
+
+NUNCA:
+- Ser solo motivacional sin confrontar
+- Celebrar estar ocupado sin generar valor real
+- Ignorar las señales de péndulo en lo que LM comparte
+- Dar listas de tareas — eso es el GTD, no el Coach`;
+};
+
+// ── COACH VIEW ────────────────────────────────────────────────────────────────
+function CoachView({ items, projects }) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sessionStarted, setSessionStarted] = useState(false);
+  const messagesEndRef = useState(null)[0];
+
+  const STARTERS = [
+    "¿En qué frecuencia estás operando ahora mismo?",
+    "¿Hay algún péndulo activo en tu vida esta semana?",
+    "¿Qué no está en tu GTD que necesita estar para que tu libertad financiera sea inevitable?",
+    "¿Estás generando valor real hoy, o solo llenando tiempo?",
+    "¿Cuándo fue la última vez que sentiste la certeza de 'it is done'?",
+  ];
+
+  const systemPrompt = buildCoachPrompt(items, projects);
+
+  const startSession = async (starter) => {
+    setSessionStarted(true);
+    const userMsg = { role: "user", content: starter };
+    setMessages([userMsg]);
+    await callCoach([userMsg]);
+  };
+
+  const callCoach = async (msgs) => {
+    setLoading(true);
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: systemPrompt,
+          messages: msgs,
+        }),
+      });
+      const data = await response.json();
+      const reply = data.content?.[0]?.text || "Error al conectar con el coach.";
+      setMessages(prev => [...prev, { role: "assistant", content: reply }]);
+    } catch {
+      setMessages(prev => [...prev, { role: "assistant", content: "Error de conexión. Intenta de nuevo." }]);
+    }
+    setLoading(false);
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim() || loading) return;
+    const userMsg = { role: "user", content: input.trim() };
+    const newMsgs = [...messages, userMsg];
+    setMessages(newMsgs);
+    setInput("");
+    await callCoach(newMsgs);
+  };
+
+  const reset = () => { setMessages([]); setSessionStarted(false); setInput(""); };
+
+  return (
+    <div style={{maxWidth:680,margin:"0 auto"}}>
+      {/* HEADER */}
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:20,fontWeight:700,color:"#111827",marginBottom:4,letterSpacing:-0.5}}>
+          🧠 Coach de Frecuencia
+        </div>
+        <div style={{fontSize:12,color:"#9ca3af"}}>
+          Anti-péndulos · Transurfing · Expansión continua
+        </div>
+      </div>
+
+      {!sessionStarted ? (
+        /* PANTALLA DE INICIO */
+        <div>
+          <div style={{background:"linear-gradient(135deg,#fafaf9,#f5f3ff)",border:"1px solid #e9e9f0",borderLeft:"3px solid #4f46e5",borderRadius:10,padding:"16px 18px",marginBottom:20}}>
+            <div style={{fontSize:9,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"#7c3aed",marginBottom:6}}>Contexto de tu sistema</div>
+            <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+              {[
+                ["📥",items.filter(i=>i.bucket==="inbox"&&!i.processed).length,"sin procesar"],
+                ["🚨",items.filter(i=>i.bucket==="agenda"&&getDaysInfo(i.dueDate)>0).length,"vencidas"],
+                ["⚡",items.filter(i=>i.bucket==="next"&&i.processed).length,"next actions"],
+                ["📁",projects.filter(p=>p.status==="active").length,"proyectos activos"],
+              ].map(([icon,n,lbl]) => (
+                <div key={lbl} style={{textAlign:"center"}}>
+                  <div style={{fontSize:13}}>{icon}</div>
+                  <div style={{fontSize:18,fontWeight:700,color:"#4f46e5"}}>{n}</div>
+                  <div style={{fontSize:10,color:"#9ca3af"}}>{lbl}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#9ca3af",marginBottom:10}}>
+            ¿Por dónde empezamos?
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {STARTERS.map((s,i) => (
+              <button key={i} onClick={() => startSession(s)}
+                style={{textAlign:"left",padding:"12px 16px",background:"#fff",border:"1px solid #f0f0f0",borderRadius:10,cursor:"pointer",fontSize:13,color:"#374151",fontFamily:"inherit",fontWeight:500,transition:"all 0.12s",lineHeight:1.5}}>
+                {s}
+              </button>
+            ))}
+          </div>
+          <div style={{marginTop:12}}>
+            <input
+              style={{width:"100%",background:"#f9fafb",border:"1px solid #f0f0f0",borderRadius:8,color:"#111827",fontFamily:"inherit",fontSize:14,padding:"10px 14px",outline:"none"}}
+              placeholder="O escribe tu propio punto de partida..."
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key==="Enter" && input.trim() && startSession(input.trim())}
+            />
+          </div>
+        </div>
+      ) : (
+        /* CONVERSACIÓN */
+        <div>
+          <div style={{background:"#fff",border:"1px solid #f0f0f0",borderRadius:12,padding:"16px",marginBottom:12,minHeight:300,maxHeight:"60vh",overflowY:"auto",display:"flex",flexDirection:"column",gap:12}}>
+            {messages.map((m,i) => (
+              <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+                <div style={{
+                  maxWidth:"80%",padding:"10px 14px",borderRadius:10,fontSize:13,lineHeight:1.6,
+                  background:m.role==="user"?"#4f46e5":"#f9fafb",
+                  color:m.role==="user"?"#fff":"#111827",
+                  border:m.role==="assistant"?"1px solid #f0f0f0":"none",
+                }}>
+                  {m.content}
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div style={{display:"flex",justifyContent:"flex-start"}}>
+                <div style={{background:"#f9fafb",border:"1px solid #f0f0f0",borderRadius:10,padding:"10px 16px",fontSize:13,color:"#9ca3af"}}>
+                  Pensando...
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <input
+              style={{flex:1,background:"#f9fafb",border:"1px solid #f0f0f0",borderRadius:8,color:"#111827",fontFamily:"inherit",fontSize:14,padding:"10px 14px",outline:"none"}}
+              placeholder="Responde al coach..."
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key==="Enter" && sendMessage()}
+              disabled={loading}
+            />
+            <button onClick={sendMessage} disabled={loading||!input.trim()}
+              style={{background:"#4f46e5",border:"none",borderRadius:8,color:"#fff",padding:"10px 18px",cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit",opacity:loading||!input.trim()?0.5:1}}>
+              →
+            </button>
+          </div>
+          <button onClick={reset}
+            style={{marginTop:10,background:"none",border:"none",color:"#9ca3af",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+            ↩ Nueva sesión
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [allDocs, setAllDocs] = useState(null);
@@ -1758,6 +1970,7 @@ export default function App() {
             {globalSearch && <button className="gsearch-clear" onClick={() => setGlobalSearch("")}>✕</button>}
           </div>
           <div className="topbar-right">
+            <button className={`topbtn${view==="coach"?" active":""}`} onClick={() => { setView("coach"); setGlobalSearch(""); }}>🧠</button>
             <button className={`topbtn${view==="calendar"?" active":""}`} onClick={() => { setView("calendar"); setGlobalSearch(""); }}>📆</button>
             <button className={`topbtn${view==="dashboard"?" active":""}`} onClick={() => { setView("dashboard"); setGlobalSearch(""); }}>🏠</button>
             <button className={`topbtn${view==="projects"?" active":""}`} onClick={() => { setView("projects"); setGlobalSearch(""); }}>📁</button>
@@ -1791,10 +2004,11 @@ export default function App() {
 
             <div className="sidebar-section">Vistas</div>
             {[
-              ["dashboard","🏠","Dashboard",null],
-              ["calendar","📆","Calendario",null],
-              ["projects","📁","Proyectos",null],
-              ["settings","⚙️","Configuración",null],
+              ["dashboard","🏠","Dashboard"],
+              ["coach","🧠","Coach"],
+              ["calendar","📆","Calendario"],
+              ["projects","📁","Proyectos"],
+              ["settings","⚙️","Configuración"],
             ].map(([v,icon,lbl]) => (
               <button key={v} className={`sidebar-btn${view===v?" active":""}`}
                 onClick={() => { setView(v); setGlobalSearch(""); }}>
@@ -1862,6 +2076,8 @@ export default function App() {
                   setNewItemProjId(pid);
                   setShowProcess(true);
                 }} />
+            ) : view === "coach" ? (
+              <CoachView items={items} projects={projects} />
             ) : view === "calendar" ? (
               <CalendarView items={items} projects={projects} onEdit={openEdit} />
             ) : view === "settings" ? (
@@ -1913,3 +2129,4 @@ export default function App() {
     </>
   );
 }
+            
