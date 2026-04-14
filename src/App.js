@@ -47,7 +47,15 @@ const PRIORITIES = [
   { id: "low",  label: "Baja",  color: "#059669" },
 ];
 
-const parseHashtags = (str = "") =>
+// Calcular siguiente fecha de recurrencia
+const calcNextDate = (fromDate, recurrence, customDays) => {
+  const d = new Date(fromDate + "T00:00:00");
+  if (recurrence === "daily")   d.setDate(d.getDate() + 1);
+  if (recurrence === "weekly")  d.setDate(d.getDate() + 7);
+  if (recurrence === "monthly") d.setMonth(d.getMonth() + 1);
+  if (recurrence === "custom")  d.setDate(d.getDate() + (parseInt(customDays) || 1));
+  return d.toISOString().slice(0,10);
+};
   (str.match(/#[\w-áéíóúñÁÉÍÓÚÑ]+/gi) || []).map(t => t.toLowerCase());
 
 const getAllTags = (items) => {
@@ -281,6 +289,17 @@ const css = `
   .gsearch-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: #e4e7ef; border: none; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 10px; color: #64748b; }
   .gsearch-clear:hover { background: #cbd5e1; }
 
+  /* RECURRING */
+  .recur-toggle { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #f8f9fc; border: 1px solid #e4e7ef; border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; }
+  .recur-toggle.on { background: #eef0fd; border-color: #c7d2fe; }
+  .recur-toggle-label { font-size: 13px; font-weight: 600; color: #475569; flex: 1; }
+  .recur-toggle.on .recur-toggle-label { color: #6366f1; }
+  .toggle-switch { width: 36px; height: 20px; background: #cbd5e1; border-radius: 10px; position: relative; transition: background 0.2s; flex-shrink: 0; }
+  .toggle-switch.on { background: #6366f1; }
+  .toggle-switch::after { content: ''; position: absolute; width: 16px; height: 16px; background: #fff; border-radius: 50%; top: 2px; left: 2px; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+  .toggle-switch.on::after { left: 18px; }
+  .recur-badge { display: inline-flex; align-items: center; gap: 3px; background: #eef0fd; border: 1px solid #c7d2fe; color: #6366f1; border-radius: 5px; padding: 1px 6px; font-size: 10px; font-weight: 700; }
+
   /* DONE BUTTON */
   .done-btn { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #cbd5e1; background: transparent; color: #cbd5e1; font-size: 10px; cursor: pointer; flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; padding: 0; }
   .done-btn:hover { border-color: #059669; color: #059669; background: #f0fdf4; transform: scale(1.15); }
@@ -408,6 +427,8 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose, onN
     context: item?.context || "",
     hashtags: item?.hashtags || "",
     processed: true,
+    recurrence: item?.recurrence || "",       // daily | weekly | monthly | custom | ""
+    customDays: item?.customDays || "7",
   });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const existingTags = getAllTags(allItems).filter(t => !parseHashtags(f.hashtags).includes(t));
@@ -545,6 +566,39 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose, onN
           )}
         </div>
 
+        <hr className="divider" />
+
+        {/* PASO 4 — RECURRENCIA */}
+        <div className="process-step">
+          <div className="step-title"><span className="step-num">4</span> ¿Es recurrente?</div>
+          <div className={`recur-toggle${f.recurrence?" on":""}`}
+            onClick={() => set("recurrence", f.recurrence ? "" : "weekly")}>
+            <span className="recur-toggle-label">🔄 {f.recurrence ? "Sí, se repite" : "No, es única"}</span>
+            <div className={`toggle-switch${f.recurrence?" on":""}`} />
+          </div>
+          {f.recurrence && <>
+            <div className="chip-row">
+              {[["daily","Diario"],["weekly","Semanal"],["monthly","Mensual"],["custom","Cada X días"]].map(([id,lbl]) => (
+                <button key={id} className={`chip${f.recurrence===id?" on":""}`}
+                  style={{"--cc":"rgba(99,102,241,0.1)","--cb":"rgba(99,102,241,0.4)","--ct":"#6366f1"}}
+                  onClick={() => set("recurrence", id)}>{lbl}</button>
+              ))}
+            </div>
+            {f.recurrence === "custom" && (
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:13,color:"#64748b"}}>Cada</span>
+                <input className="inp" type="number" min="1" max="365"
+                  value={f.customDays} onChange={e => set("customDays", e.target.value)}
+                  style={{width:70,marginBottom:0,textAlign:"center"}} />
+                <span style={{fontSize:13,color:"#64748b"}}>días</span>
+              </div>
+            )}
+            <div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic"}}>
+              Al marcar como ✅ hecha se generará automáticamente la siguiente instancia en Agenda.
+            </div>
+          </>}
+        </div>
+
         <div className="btn-row">
           {item && <button className="btn btn-danger" onClick={() => { onDelete(item._id); onClose(); }}>Eliminar</button>}
           <button className="btn btn-ghost" onClick={onClose}>Cerrar</button>
@@ -629,7 +683,8 @@ function DashItem({ item, projects, onEdit, onDone }) {
         <div className="dash-item-title">{item.title}</div>
         <div className="dash-item-meta">
           {item.dueDate && <DaysTag dueDate={item.dueDate} />}
-          {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ {item.waitingFor}</span>}
+          {item.recurrence && <span className="recur-badge">🔄 {item.recurrence==="daily"?"Diario":item.recurrence==="weekly"?"Semanal":item.recurrence==="monthly"?"Mensual":`c/${item.customDays}d`}</span>}
+          {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ @{item.waitingFor}</span>}
           {project && <span style={{fontSize:10,color:project.color||"#6366f1",fontWeight:600}}>📁 {project.title}</span>}
           {item.context && <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{item.context}</span>}
           {parseHashtags(item.hashtags).map(t => (
@@ -806,6 +861,7 @@ function BucketView({ bucket, items, projects, allItems, onEdit, onMoveTo, onDon
             <div className="card-meta">
               {!item.processed && <span className="unprocessed-label">· sin procesar</span>}
               {item.dueDate && <DaysTag dueDate={item.dueDate} />}
+              {item.recurrence && <span className="recur-badge">🔄 {item.recurrence==="daily"?"Diario":item.recurrence==="weekly"?"Semanal":item.recurrence==="monthly"?"Mensual":`c/${item.customDays}d`}</span>}
               {priority && item.processed && <span className="pill" style={{background:`${priority.color}15`,color:priority.color,border:`1px solid ${priority.color}40`}}>{priority.label}</span>}
               {project && <span className="pill" style={{background:`${project.color||"#6366f1"}15`,color:project.color||"#6366f1",border:`1px solid ${project.color||"#6366f1"}40`}}>📁 {project.title}</span>}
               {item.context && <span style={{fontSize:10,color:"#6366f1",fontFamily:"'DM Mono',monospace"}}>{item.context}</span>}
@@ -1332,7 +1388,20 @@ export default function App() {
   const delItem = async (id) => { await db.del(id); };
   const markDone = async (id) => {
     const item = allDocs.find(d => d._id === id);
-    if (item) await db.put({ ...item, bucket: "archive", processed: true });
+    if (!item) return;
+    await db.put({ ...item, bucket: "archive", processed: true });
+    // Si es recurrente, generar siguiente instancia
+    if (item.recurrence && item.dueDate) {
+      const nextDate = calcNextDate(item.dueDate, item.recurrence, item.customDays);
+      await db.put({
+        ...item,
+        _id: undefined, // nuevo ID
+        bucket: "agenda",
+        dueDate: nextDate,
+        processed: true,
+        updatedAt: Date.now(),
+      });
+    }
   };
   const delProj = async (id) => {
     for (const i of allDocs.filter(d => d.type==="item" && d.projectId===id)) await db.put({...i,projectId:""});
