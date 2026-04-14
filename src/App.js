@@ -395,7 +395,7 @@ function CaptureModal({ onSave, onClose }) {
 }
 
 // ── PROCESS MODAL ─────────────────────────────────────────────────────────────
-function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
+function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose, onNext, unprocessedCount }) {
   const [f, setF] = useState({
     title: item?.title || "",
     notes: item?.notes || "",
@@ -414,12 +414,35 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
   const addTag = (tag) => { const cur = f.hashtags.trim(); set("hashtags", cur ? `${cur} ${tag}` : tag); };
   const isNew = !item?.processed;
 
+  // Sugerencias de personas en waiting
+  const waitingSuggestions = [...new Set(allItems.filter(i => i.waitingFor?.trim()).map(i => i.waitingFor.trim()))];
+  const filteredSuggestions = waitingSuggestions.filter(w =>
+    f.waitingFor && w.toLowerCase().includes(f.waitingFor.toLowerCase()) && w !== f.waitingFor
+  );
+
+  const handleSave = async () => {
+    if (!f.title.trim()) return;
+    await onSave({ ...item, ...f, type: "item" });
+    if (isNew && onNext) {
+      onNext(); // pasa al siguiente sin cerrar
+    } else {
+      onClose();
+    }
+  };
+
   return (
     <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box">
         <div className="modal-header">
           <span className="modal-title">{isNew ? "⚡ Procesar" : "✎ Editar"}</span>
-          <button className="close-btn" onClick={onClose}>✕</button>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {isNew && unprocessedCount > 1 && (
+              <span style={{fontSize:11,color:"#f59e0b",fontWeight:700,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"2px 8px"}}>
+                {unprocessedCount} pendientes
+              </span>
+            )}
+            <button className="close-btn" onClick={onClose}>✕</button>
+          </div>
         </div>
         <div className="modal-subtitle">{isNew ? "Define qué es esto y qué acción requiere" : item?.title}</div>
 
@@ -446,12 +469,30 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
             <input className="inp" type="date" value={f.dueDate} onChange={e => set("dueDate", e.target.value)} />
           </>}
           {f.bucket === "waiting" && <>
-  <label className="field-label">Esperando a</label>
-  <input className="inp" placeholder="Nombre o empresa..." value={f.waitingFor}
-    onChange={e => set("waitingFor", e.target.value)} />
-  <label className="field-label">Seguimiento — ¿cuándo contactar?</label>
-  <input className="inp" type="date" value={f.dueDate} onChange={e => set("dueDate", e.target.value)} />
-</>}
+            <label className="field-label">Esperando a</label>
+            <input className="inp" placeholder="Nombre o empresa..." value={f.waitingFor}
+              onChange={e => set("waitingFor", e.target.value)} />
+            {filteredSuggestions.length > 0 && (
+              <div className="tag-suggestions">
+                <span style={{fontSize:10,color:"#94a3b8",marginRight:4}}>@</span>
+                {filteredSuggestions.map(w => (
+                  <button key={w} className="tag-sug" style={{color:"#7c3aed",borderColor:"rgba(124,58,237,0.3)",background:"rgba(124,58,237,0.06)"}}
+                    onClick={() => set("waitingFor", w)}>@{w}</button>
+                ))}
+              </div>
+            )}
+            {f.waitingFor === "" && waitingSuggestions.length > 0 && (
+              <div className="tag-suggestions">
+                <span style={{fontSize:10,color:"#94a3b8",marginRight:4}}>recientes:</span>
+                {waitingSuggestions.slice(0,5).map(w => (
+                  <button key={w} className="tag-sug" style={{color:"#7c3aed",borderColor:"rgba(124,58,237,0.3)",background:"rgba(124,58,237,0.06)"}}
+                    onClick={() => set("waitingFor", w)}>@{w}</button>
+                ))}
+              </div>
+            )}
+            <label className="field-label">Seguimiento — ¿cuándo contactar?</label>
+            <input className="inp" type="date" value={f.dueDate} onChange={e => set("dueDate", e.target.value)} />
+          </>}
         </div>
         <hr className="divider" />
 
@@ -506,12 +547,10 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose }) {
 
         <div className="btn-row">
           {item && <button className="btn btn-danger" onClick={() => { onDelete(item._id); onClose(); }}>Eliminar</button>}
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className={`btn ${isNew?"btn-process":"btn-primary"}`} onClick={() => {
-            if (!f.title.trim()) return;
-            onSave({ ...item, ...f, type: "item" });
-            onClose();
-          }}>{isNew ? "✓ Procesar" : "Guardar"}</button>
+          <button className="btn btn-ghost" onClick={onClose}>Cerrar</button>
+          <button className={`btn ${isNew?"btn-process":"btn-primary"}`} onClick={handleSave}>
+            {isNew && onNext && unprocessedCount > 1 ? "✓ Procesar → siguiente" : isNew ? "✓ Procesar" : "Guardar"}
+          </button>
         </div>
       </div>
     </div>
@@ -590,7 +629,7 @@ function DashItem({ item, projects, onEdit, onDone }) {
         <div className="dash-item-title">{item.title}</div>
         <div className="dash-item-meta">
           {item.dueDate && <DaysTag dueDate={item.dueDate} />}
-          {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ @{item.waitingFor}</span>}
+          {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ {item.waitingFor}</span>}
           {project && <span style={{fontSize:10,color:project.color||"#6366f1",fontWeight:600}}>📁 {project.title}</span>}
           {item.context && <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{item.context}</span>}
           {parseHashtags(item.hashtags).map(t => (
@@ -770,21 +809,21 @@ function BucketView({ bucket, items, projects, allItems, onEdit, onMoveTo, onDon
               {priority && item.processed && <span className="pill" style={{background:`${priority.color}15`,color:priority.color,border:`1px solid ${priority.color}40`}}>{priority.label}</span>}
               {project && <span className="pill" style={{background:`${project.color||"#6366f1"}15`,color:project.color||"#6366f1",border:`1px solid ${project.color||"#6366f1"}40`}}>📁 {project.title}</span>}
               {item.context && <span style={{fontSize:10,color:"#6366f1",fontFamily:"'DM Mono',monospace"}}>{item.context}</span>}
-              {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ @{item.waitingFor}</span>}
+              {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ {item.waitingFor}</span>}
               {tags.map(t => (
                 <span key={t} className={`hashtag${activeTag===t?" active-filter":""}`}
                   onClick={e => { e.stopPropagation(); onTagClick(t); }}>{t}</span>
               ))}
             </div>
             {item.processed && (
-  <div className="quick-moves" onClick={e => e.stopPropagation()}>
-    <button className="qbtn" style={{color:"#059669",borderColor:"#86efac",background:"#f0fdf4"}}
-      onClick={() => onMoveTo(item._id, "archive")}>✅ Hecha</button>
-    {BUCKETS.filter(b => b.id !== item.bucket && b.id !== "archive").map(b => (
-      <button key={b.id} className="qbtn" onClick={() => onMoveTo(item._id, b.id)}>→ {b.icon} {b.label}</button>
-    ))}
-  </div>
-)}
+              <div className="quick-moves" onClick={e => e.stopPropagation()}>
+                <button className="qbtn" style={{color:"#059669",borderColor:"#86efac",background:"#f0fdf4"}}
+                  onClick={() => onDone(item._id)}>✅ Hecha</button>
+                {BUCKETS.filter(b => b.id !== item.bucket && b.id !== "archive").map(b => (
+                  <button key={b.id} className="qbtn" onClick={() => onMoveTo(item._id, b.id)}>→ {b.icon} {b.label}</button>
+                ))}
+              </div>
+            )}
           </div>
         );
       })}
@@ -1066,7 +1105,7 @@ function CalendarView({ items, projects, onEdit }) {
   const [calView, setCalView] = useState("week"); // week | day | month
   const [refDate, setRefDate] = useState(new Date());
 
- const agendaItems = items.filter(i => (i.bucket === "agenda" || i.bucket === "waiting") && i.dueDate);
+  const agendaItems = items.filter(i => i.bucket === "agenda" && i.dueDate);
 
   // ── helpers ──
   const startOfWeek = (d) => {
@@ -1231,7 +1270,7 @@ function CalItem({ item, projects, onEdit }) {
   return (
     <div className="cal-item" style={{borderLeft:`3px solid ${color}`,background:`${color}0d`}} onClick={() => onEdit(item)}>
       <div className="cal-item-title">{item.title}</div>
-     {item.waitingFor && <div style={{fontSize:9,color:"#7c3aed",fontWeight:700}}>⏳ @{item.waitingFor}</div>}
+      {item.waitingFor && <div style={{fontSize:9,color:"#7c3aed"}}>⏳ {item.waitingFor}</div>}
     </div>
   );
 }
@@ -1250,7 +1289,7 @@ function CalItemFull({ item, projects, onEdit }) {
         {pr && <span className="pill" style={{background:`${pr.color}15`,color:pr.color,border:`1px solid ${pr.color}40`}}>{pr.label}</span>}
         {project && <span className="pill" style={{background:`${project.color||"#6366f1"}15`,color:project.color||"#6366f1",border:`1px solid ${project.color||"#6366f1"}40`}}>📁 {project.title}</span>}
         {item.context && <span style={{fontSize:10,color:"#6366f1",fontFamily:"'DM Mono',monospace"}}>{item.context}</span>}
-        {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ @{item.waitingFor}</span>}
+        {item.waitingFor && <span style={{fontSize:10,color:"#7c3aed",fontWeight:600}}>⏳ {item.waitingFor}</span>}
         {parseHashtags(item.hashtags).map(t => <span key={t} className="hashtag" style={{cursor:"default"}}>{t}</span>)}
       </div>
     </div>
@@ -1388,8 +1427,14 @@ export default function App() {
         )}
         {showProcess && (
           <ProcessModal item={editItem} projects={projects} allItems={items}
+            unprocessedCount={unprocessed.length}
             onSave={async d => { if (newItemProjId && !d.projectId) d.projectId = newItemProjId; await saveItem(d); }}
             onDelete={delItem}
+            onNext={() => {
+              const remaining = items.filter(i => i.bucket === "inbox" && !i.processed && i._id !== editItem?._id);
+              if (remaining.length > 0) setEditItem(remaining[0]);
+              else { setShowProcess(false); setEditItem(null); }
+            }}
             onClose={() => { setShowProcess(false); setEditItem(null); setNewItemProjId(""); }} />
         )}
         {showProj && (
