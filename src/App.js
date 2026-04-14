@@ -27,12 +27,13 @@ const db = {
 };
 
 const BUCKETS = [
-  { id: "inbox",   label: "Capturar",    icon: "📥", color: "#6366f1", desc: "Todo lo que llega a tu mente" },
-  { id: "next",    label: "Next Action", icon: "⚡", color: "#d97706", desc: "Acciones físicas concretas" },
-  { id: "agenda",  label: "Agenda",      icon: "📅", color: "#059669", desc: "Con fecha o persona específica" },
-  { id: "waiting", label: "Waiting",     icon: "⏳", color: "#7c3aed", desc: "Delegado, esperando respuesta" },
-  { id: "archive", label: "Archivar",    icon: "🗄️", color: "#64748b", desc: "Referencia o completado" },
-  { id: "trash",   label: "Desechar",    icon: "🗑️", color: "#dc2626", desc: "Ya no es relevante" },
+  { id: "inbox",     label: "Capturar",    icon: "📥", color: "#6366f1", desc: "Todo lo que llega a tu mente" },
+  { id: "next",      label: "Next Action", icon: "⚡", color: "#d97706", desc: "Acciones físicas concretas" },
+  { id: "agenda",    label: "Agenda",      icon: "📅", color: "#059669", desc: "Con fecha o persona específica" },
+  { id: "waiting",   label: "Waiting",     icon: "⏳", color: "#7c3aed", desc: "Delegado, esperando respuesta" },
+  { id: "reference", label: "Referencia",  icon: "📚", color: "#0891b2", desc: "Información para consultar después" },
+  { id: "archive",   label: "Archivar",    icon: "🗄️", color: "#64748b", desc: "Tarea completada" },
+  { id: "trash",     label: "Desechar",    icon: "🗑️", color: "#dc2626", desc: "Ya no es relevante" },
 ];
 
 const ENERGY = [
@@ -875,7 +876,7 @@ function Dashboard({ items, projects, onEdit, onDone, onNewItem, onCapture, onNa
   const in7Str = in7.toISOString().slice(0,10);
 
   // Clasificaciones
-  const active = items.filter(i => i.processed && i.bucket !== "archive" && i.bucket !== "trash");
+  const active = items.filter(i => i.processed && i.bucket !== "archive" && i.bucket !== "trash" && i.bucket !== "reference");
   const unprocessed = items.filter(i => i.bucket === "inbox" && !i.processed);
   const overdue = active.filter(i => i.dueDate && getDaysInfo(i.dueDate) > 0);
   const dueToday = active.filter(i => i.dueDate === todayStr);
