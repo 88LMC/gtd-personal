@@ -797,7 +797,7 @@ function DashItem({ item, projects, onEdit, onDone }) {
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function Dashboard({ items, projects, onEdit, onDone, onNewItem, onCapture }) {
+function Dashboard({ items, projects, onEdit, onDone, onNewItem, onCapture, onNavigate }) {
   const today = new Date(); today.setHours(0,0,0,0);
   const todayStr = today.toISOString().slice(0,10);
   const in7 = new Date(today); in7.setDate(in7.getDate()+7);
@@ -903,36 +903,36 @@ function Dashboard({ items, projects, onEdit, onDone, onNewItem, onCapture }) {
             )}
 
             {overdue.length > 0 && (
-              <div className="alert-card alert-red">
+              <div className="alert-card alert-red" onClick={() => onNavigate("agenda","overdue")}>
                 <span style={{fontSize:18}}>🚨</span>
                 <div style={{flex:1}}>
                   <div style={{fontSize:13,fontWeight:700,color:"#991b1b"}}>{overdue.length} tarea{overdue.length>1?"s":""} vencida{overdue.length>1?"s":""}</div>
                   <div style={{fontSize:11,color:"#b91c1c"}}>
-                    {overdue.slice(0,2).map(i => i.title).join(" · ")}{overdue.length>2?` +${overdue.length-2} más`:""}
+                    {overdue.slice(0,2).map(i => i.title).join(" · ")}{overdue.length>2?` +${overdue.length-2} más`:""} · <span style={{textDecoration:"underline"}}>Ver todas →</span>
                   </div>
                 </div>
               </div>
             )}
 
             {dueToday.length > 0 && (
-              <div className="alert-card alert-orange">
+              <div className="alert-card alert-orange" onClick={() => onNavigate("agenda","today")}>
                 <span style={{fontSize:18}}>📅</span>
                 <div style={{flex:1}}>
                   <div style={{fontSize:13,fontWeight:700,color:"#92400e"}}>{dueToday.length} tarea{dueToday.length>1?"s":""} para hoy</div>
                   <div style={{fontSize:11,color:"#b45309"}}>
-                    {dueToday.slice(0,2).map(i => i.title).join(" · ")}{dueToday.length>2?` +${dueToday.length-2} más`:""}
+                    {dueToday.slice(0,2).map(i => i.title).join(" · ")}{dueToday.length>2?` +${dueToday.length-2} más`:""} · <span style={{textDecoration:"underline"}}>Ver todas →</span>
                   </div>
                 </div>
               </div>
             )}
 
             {dueNext7.length > 0 && (
-              <div className="alert-card alert-blue">
+              <div className="alert-card alert-blue" onClick={() => onNavigate("agenda","next7")}>
                 <span style={{fontSize:18}}>🔜</span>
                 <div style={{flex:1}}>
                   <div style={{fontSize:13,fontWeight:700,color:"#1e40af"}}>{dueNext7.length} tarea{dueNext7.length>1?"s":""} próximos 7 días</div>
                   <div style={{fontSize:11,color:"#3b82f6"}}>
-                    {dueNext7.slice(0,2).map(i => `${i.title} (${i.dueDate})`).join(" · ")}
+                    {dueNext7.slice(0,2).map(i => `${i.title} (${i.dueDate})`).join(" · ")} · <span style={{textDecoration:"underline"}}>Ver todas →</span>
                   </div>
                 </div>
               </div>
@@ -1001,11 +1001,18 @@ function Dashboard({ items, projects, onEdit, onDone, onNewItem, onCapture }) {
 }
 
 // ── BUCKET VIEW ───────────────────────────────────────────────────────────────
-function BucketView({ bucket, items, projects, allItems, onEdit, onMoveTo, onDone, onTagClick, activeTag, search, setSearch, setActiveTag, unprocessed }) {
+function BucketView({ bucket, items, projects, allItems, onEdit, onMoveTo, onDone, onTagClick, activeTag, search, setSearch, setActiveTag, dateFilter, setDateFilter, unprocessed }) {
   const bkt = BUCKETS.find(b => b.id === bucket);
+  const todayStr = new Date().toISOString().slice(0,10);
+  const in7Str = (() => { const d = new Date(); d.setDate(d.getDate()+7); return d.toISOString().slice(0,10); })();
+
   const bucketTags = [...new Set(items.filter(i=>i.bucket===bucket).flatMap(i=>parseHashtags(i.hashtags)))].sort();
   const visible = items.filter(i => {
     if (i.bucket !== bucket) return false;
+    // Date filter from dashboard
+    if (dateFilter === "overdue" && !(i.dueDate && getDaysInfo(i.dueDate) > 0)) return false;
+    if (dateFilter === "today" && i.dueDate !== todayStr) return false;
+    if (dateFilter === "next7" && !(i.dueDate && i.dueDate > todayStr && i.dueDate <= in7Str)) return false;
     if (activeTag && !parseHashtags(i.hashtags).includes(activeTag)) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -1015,12 +1022,21 @@ function BucketView({ bucket, items, projects, allItems, onEdit, onMoveTo, onDon
     return true;
   });
 
+  const filterLabel = dateFilter === "overdue" ? "🚨 Vencidas" : dateFilter === "today" ? "📅 Para hoy" : dateFilter === "next7" ? "🔜 Próximos 7 días" : "";
+
   return (
     <>
       <div className="bucket-header">
         <div className="bucket-name">{bkt?.icon} {bkt?.label}</div>
         <div className="bucket-desc">{bkt?.desc}</div>
       </div>
+
+      {dateFilter && (
+        <div style={{display:"flex",alignItems:"center",gap:8,background:"#f5f3ff",border:"1px solid #ede9fe",borderRadius:8,padding:"8px 12px",marginBottom:12}}>
+          <span style={{fontSize:12,fontWeight:600,color:"#4f46e5"}}>Filtro activo: {filterLabel}</span>
+          <button onClick={() => setDateFilter("")} style={{marginLeft:"auto",fontSize:10,color:"#7c3aed",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>✕ Quitar filtro</button>
+        </div>
+      )}
 
       {bucket === "inbox" && (
         <div className="capture-wrap">
@@ -1566,6 +1582,7 @@ export default function App() {
   const [bucket, setBucket] = useState("inbox");
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState("");
+  const [dateFilter, setDateFilter] = useState(""); // "overdue" | "today" | "next7" | ""
   const [globalSearch, setGlobalSearch] = useState("");
   const [showCapture, setShowCapture] = useState(false);
   const [showProcess, setShowProcess] = useState(false);
@@ -1620,6 +1637,13 @@ export default function App() {
   };
   const handleTagClick = tag => { setActiveTag(p => p===tag?"":tag); setSearch(""); };
   const openEdit = (item) => { setEditItem(item); setShowProcess(true); };
+  const navigateTo = (targetBucket, filter="") => {
+    setBucket(targetBucket);
+    setView("bucket");
+    setDateFilter(filter);
+    setSearch("");
+    setActiveTag("");
+  };
 
   return (
     <>
@@ -1726,11 +1750,13 @@ export default function App() {
             ) : view === "dashboard" ? (
               <Dashboard items={items} projects={projects} onEdit={openEdit} onDone={markDone}
                 onNewItem={() => { setEditItem(null); setShowProcess(true); }}
-                onCapture={() => setShowCapture(true)} />
+                onCapture={() => setShowCapture(true)}
+                onNavigate={navigateTo} />
             ) : view === "bucket" ? (
               <BucketView bucket={bucket} items={items} projects={projects} allItems={items}
                 onEdit={openEdit} onMoveTo={moveTo} onDone={markDone} onTagClick={handleTagClick}
                 activeTag={activeTag} search={search} setSearch={setSearch} setActiveTag={setActiveTag}
+                dateFilter={dateFilter} setDateFilter={setDateFilter}
                 unprocessed={unprocessed} />
             ) : view === "projects" ? (
               <ProjectsView projects={projects} items={items}
