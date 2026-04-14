@@ -302,6 +302,14 @@ const css = `
   .toggle-switch.on::after { left: 18px; }
   .recur-badge { display: inline-flex; align-items: center; gap: 3px; background: #eef0fd; border: 1px solid #c7d2fe; color: #6366f1; border-radius: 5px; padding: 1px 6px; font-size: 10px; font-weight: 700; }
 
+  /* ALERT CARDS */
+  .alert-card { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid; cursor: pointer; transition: opacity 0.15s; }
+  .alert-card:hover { opacity: 0.85; }
+  .alert-red    { background: #fef2f2; border-color: #fecaca; }
+  .alert-orange { background: #fff7ed; border-color: #fed7aa; }
+  .alert-yellow { background: #fffbeb; border-color: #fde68a; }
+  .alert-blue   { background: #eff6ff; border-color: #bfdbfe; }
+
   /* DONE BUTTON */
   .done-btn { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #cbd5e1; background: transparent; color: #cbd5e1; font-size: 10px; cursor: pointer; flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; padding: 0; }
   .done-btn:hover { border-color: #059669; color: #059669; background: #f0fdf4; transform: scale(1.15); }
@@ -700,96 +708,200 @@ function DashItem({ item, projects, onEdit, onDone }) {
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function Dashboard({ items, projects, onEdit, onDone, onNewItem, onCapture }) {
-  const agenda = items.filter(i => i.bucket === "agenda" && i.processed)
-    .sort((a,b) => {
-      const da = getDaysInfo(a.dueDate) ?? -9999;
-      const db_ = getDaysInfo(b.dueDate) ?? -9999;
-      return db_ - da; // más retrasados primero
-    });
-  const next = items.filter(i => i.bucket === "next" && i.processed)
-    .sort((a,b) => {
-      const pOrder = {high:0,med:1,low:2};
-      return (pOrder[a.priority]||1) - (pOrder[b.priority]||1);
-    });
-  const waiting = items.filter(i => i.bucket === "waiting" && i.processed);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayStr = today.toISOString().slice(0,10);
+  const in7 = new Date(today); in7.setDate(in7.getDate()+7);
+  const in7Str = in7.toISOString().slice(0,10);
+
+  // Clasificaciones
+  const active = items.filter(i => i.processed && i.bucket !== "archive" && i.bucket !== "trash");
   const unprocessed = items.filter(i => i.bucket === "inbox" && !i.processed);
-  const overdue = agenda.filter(i => getDaysInfo(i.dueDate) > 0).length;
+  const overdue = active.filter(i => i.dueDate && getDaysInfo(i.dueDate) > 0);
+  const dueToday = active.filter(i => i.dueDate === todayStr);
+  const dueNext7 = active.filter(i => i.dueDate && i.dueDate > todayStr && i.dueDate <= in7Str);
+  const doneToday = items.filter(i => i.bucket === "archive" && i.updatedAt >= today.getTime());
+  const doneWeek = items.filter(i => {
+    const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate()-7);
+    return i.bucket === "archive" && i.updatedAt >= weekAgo.getTime();
+  });
+
+  // Energía
+  const byEnergy = (level) => active.filter(i =>
+    (i.bucket === "next" || i.bucket === "agenda") && i.energy === level
+  ).sort((a,b) => {
+    // más urgentes primero dentro de cada nivel
+    const da = getDaysInfo(a.dueDate) ?? -999;
+    const db_ = getDaysInfo(b.dueDate) ?? -999;
+    return db_ - da;
+  }).slice(0,4);
+
+  const highE = byEnergy("high");
+  const medE  = byEnergy("med");
+  const lowE  = byEnergy("low");
+
+  // Racha — días con al menos 1 tarea archivada
+  const calcStreak = () => {
+    let streak = 0;
+    const d = new Date(today);
+    while (true) {
+      const dStr = d.toISOString().slice(0,10);
+      const dStart = new Date(dStr+"T00:00:00").getTime();
+      const dEnd = dStart + 86400000;
+      const hadActivity = items.some(i => i.bucket === "archive" && i.updatedAt >= dStart && i.updatedAt < dEnd);
+      if (!hadActivity) break;
+      streak++;
+      d.setDate(d.getDate()-1);
+      if (streak > 365) break;
+    }
+    return streak;
+  };
+  const streak = calcStreak();
+
+  // Proyectos activos con progreso
+  const activeProjects = projects.filter(p => p.status === "active").map(p => {
+    const pItems = items.filter(i => i.projectId === p._id && i.bucket !== "trash");
+    const done = pItems.filter(i => i.bucket === "archive").length;
+    const total = pItems.length;
+    const pct = total > 0 ? Math.round((done/total)*100) : 0;
+    return { ...p, done, total, pct };
+  }).sort((a,b) => b.pct - a.pct);
+
+  const EnergyCard = ({ level, icon, label, color, taskList }) => (
+    <div className="dash-section" style={{flex:1,minWidth:0}}>
+      <div className="dash-header">
+        <div className="dash-title" style={{color}}>{icon} {label}</div>
+        <span className="dash-count">{taskList.length}</span>
+      </div>
+      <div className="dash-items">
+        {taskList.length === 0
+          ? <div className="dash-empty">Sin tareas {label.toLowerCase()}</div>
+          : taskList.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} onDone={onDone} />)
+        }
+      </div>
+    </div>
+  );
 
   return (
     <div>
-      {/* STATS ROW */}
-      <div className="stats-row">
-        {BUCKETS.map(b => {
-          const count = items.filter(i => i.bucket === b.id).length;
-          return (
-            <div key={b.id} className="stat-box" style={{"--sc":b.color,"--sbg":`${b.color}0d`}}>
-              <div className="stat-icon">{b.icon}</div>
-              <div className="stat-num">{count}</div>
-              <div className="stat-lbl">{b.label}</div>
-            </div>
-          );
-        })}
+      {/* ── SALUDO ── */}
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:22,fontWeight:800,color:"#1e293b",letterSpacing:-0.5,marginBottom:2}}>
+          {new Date().getHours() < 12 ? "Buenos días" : new Date().getHours() < 19 ? "Buenas tardes" : "Buenas noches"} 👋
+        </div>
+        <div style={{fontSize:12,color:"#94a3b8"}}>
+          {todayStr} · {doneToday.length > 0 ? `${doneToday.length} tarea${doneToday.length>1?"s":""} completada${doneToday.length>1?"s":""} hoy` : "Sin tareas completadas hoy todavía"}
+        </div>
       </div>
 
-      {/* PROCESS BANNER */}
-      {unprocessed.length > 0 && (
-        <div className="process-banner" onClick={() => onEdit(unprocessed[0])}>
-          <span className="process-banner-text">⚡ Procesar bandeja de entrada</span>
-          <span className="process-banner-count">{unprocessed.length} pendientes</span>
+      {/* ── SECCIÓN 1: ALERTAS ── */}
+      {(overdue.length > 0 || dueToday.length > 0 || unprocessed.length > 0) && (
+        <div style={{marginBottom:20}}>
+          <div className="section-label">⚡ Atención inmediata</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+
+            {unprocessed.length > 0 && (
+              <div className="alert-card alert-yellow" onClick={() => onEdit(unprocessed[0])}>
+                <span style={{fontSize:18}}>📥</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#92400e"}}>{unprocessed.length} item{unprocessed.length>1?"s":""} sin procesar en inbox</div>
+                  <div style={{fontSize:11,color:"#b45309"}}>Procesar ahora →</div>
+                </div>
+              </div>
+            )}
+
+            {overdue.length > 0 && (
+              <div className="alert-card alert-red">
+                <span style={{fontSize:18}}>🚨</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#991b1b"}}>{overdue.length} tarea{overdue.length>1?"s":""} vencida{overdue.length>1?"s":""}</div>
+                  <div style={{fontSize:11,color:"#b91c1c"}}>
+                    {overdue.slice(0,2).map(i => i.title).join(" · ")}{overdue.length>2?` +${overdue.length-2} más`:""}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {dueToday.length > 0 && (
+              <div className="alert-card alert-orange">
+                <span style={{fontSize:18}}>📅</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#92400e"}}>{dueToday.length} tarea{dueToday.length>1?"s":""} para hoy</div>
+                  <div style={{fontSize:11,color:"#b45309"}}>
+                    {dueToday.slice(0,2).map(i => i.title).join(" · ")}{dueToday.length>2?` +${dueToday.length-2} más`:""}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {dueNext7.length > 0 && (
+              <div className="alert-card alert-blue">
+                <span style={{fontSize:18}}>🔜</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#1e40af"}}>{dueNext7.length} tarea{dueNext7.length>1?"s":""} próximos 7 días</div>
+                  <div style={{fontSize:11,color:"#3b82f6"}}>
+                    {dueNext7.slice(0,2).map(i => `${i.title} (${i.dueDate})`).join(" · ")}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* OVERDUE ALERT */}
-      {overdue > 0 && (
-        <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:16}}>🚨</span>
-          <span style={{fontSize:12,color:"#991b1b",fontWeight:700}}>{overdue} tarea{overdue>1?"s":""} de agenda vencida{overdue>1?"s":""}</span>
+      {/* ── SECCIÓN 2: MOMENTUM POR ENERGÍA ── */}
+      <div style={{marginBottom:20}}>
+        <div className="section-label">🔋 Genera momentum — elige según tu energía</div>
+        <div style={{display:"flex",gap:8,flexDirection:"column"}}>
+          {highE.length > 0 && <EnergyCard level="high" icon="⚡" label="Alta energía" color="#dc2626" taskList={highE} />}
+          {medE.length > 0  && <EnergyCard level="med"  icon="🔆" label="Media energía" color="#d97706" taskList={medE} />}
+          {lowE.length > 0  && <EnergyCard level="low"  icon="🌙" label="Baja energía" color="#059669" taskList={lowE} />}
+          {highE.length === 0 && medE.length === 0 && lowE.length === 0 && (
+            <div className="empty"><div className="empty-icon">🎯</div><div className="empty-text">No hay tareas pendientes — ¡bien hecho!</div></div>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* DASHBOARD GRID */}
-      <div className="dashboard-grid">
-        {/* AGENDA */}
-        <div className="dash-section dash-col-full">
-          <div className="dash-header">
-            <div className="dash-title" style={{color:"#059669"}}>📅 Agenda</div>
-            <span className="dash-count">{agenda.length}</span>
+      {/* ── SECCIÓN 3: TRACCIÓN ── */}
+      <div style={{marginBottom:20}}>
+        <div className="section-label">📈 Tu tracción</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+          {/* RACHA */}
+          <div style={{background:"#fff",border:"1px solid #e4e7ef",borderRadius:12,padding:"14px 16px",textAlign:"center"}}>
+            <div style={{fontSize:28}}>🔥</div>
+            <div style={{fontSize:26,fontWeight:800,color:streak>0?"#f59e0b":"#cbd5e1",letterSpacing:-1}}>{streak}</div>
+            <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.06em"}}>días seguidos</div>
+            {streak === 0 && <div style={{fontSize:10,color:"#cbd5e1",marginTop:4}}>Completa una tarea hoy</div>}
           </div>
-          <div className="dash-items">
-            {agenda.length === 0
-              ? <div className="dash-empty">Sin items en agenda</div>
-              : agenda.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} onDone={onDone} />)
-            }
-          </div>
-        </div>
-
-        {/* NEXT ACTIONS */}
-        <div className="dash-section">
-          <div className="dash-header">
-            <div className="dash-title" style={{color:"#d97706"}}>⚡ Next Actions</div>
-            <span className="dash-count">{next.length}</span>
-          </div>
-          <div className="dash-items">
-            {next.length === 0
-              ? <div className="dash-empty">Sin next actions</div>
-              : next.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} onDone={onDone} />)
-            }
+          {/* SEMANA */}
+          <div style={{background:"#fff",border:"1px solid #e4e7ef",borderRadius:12,padding:"14px 16px",textAlign:"center"}}>
+            <div style={{fontSize:28}}>✅</div>
+            <div style={{fontSize:26,fontWeight:800,color:"#059669",letterSpacing:-1}}>{doneWeek.length}</div>
+            <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.06em"}}>completadas esta semana</div>
+            <div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>{doneToday.length} hoy</div>
           </div>
         </div>
 
-        {/* WAITING */}
-        <div className="dash-section">
-          <div className="dash-header">
-            <div className="dash-title" style={{color:"#7c3aed"}}>⏳ Waiting</div>
-            <span className="dash-count">{waiting.length}</span>
+        {/* PROYECTOS */}
+        {activeProjects.length > 0 && (
+          <div style={{background:"#fff",border:"1px solid #e4e7ef",borderRadius:12,padding:"14px 16px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:12}}>Proyectos activos</div>
+            {activeProjects.map(p => (
+              <div key={p._id} style={{marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                  <div style={{fontSize:12,fontWeight:700,color:"#1e293b",display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{width:8,height:8,borderRadius:"50%",background:p.color||"#6366f1",display:"inline-block"}} />
+                    {p.title}
+                  </div>
+                  <span style={{fontSize:11,fontWeight:700,color:p.color||"#6366f1"}}>{p.pct}%</span>
+                </div>
+                <div style={{height:6,background:"#f1f5f9",borderRadius:4,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${p.pct}%`,background:p.color||"#6366f1",borderRadius:4,transition:"width 0.4s ease"}} />
+                </div>
+                <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>{p.done} de {p.total} tareas completadas</div>
+              </div>
+            ))}
           </div>
-          <div className="dash-items">
-            {waiting.length === 0
-              ? <div className="dash-empty">Nada esperando</div>
-              : waiting.map(i => <DashItem key={i._id} item={i} projects={projects} onEdit={onEdit} onDone={onDone} />)
-            }
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
