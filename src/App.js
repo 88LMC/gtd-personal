@@ -1705,7 +1705,6 @@ function CoachView({ items, projects }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
-  const messagesEndRef = useState(null)[0];
 
   const STARTERS = [
     "¿En qué frecuencia estás operando ahora mismo?",
@@ -2129,4 +2128,3 @@ export default function App() {
     </>
   );
 }
-            
