@@ -519,7 +519,7 @@ function CaptureModal({ onSave, onClose }) {
 }
 
 // ── PROCESS MODAL ─────────────────────────────────────────────────────────────
-function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose, onNext, unprocessedCount }) {
+function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose, onNext, unprocessedCount, onConvertToProject }) {
   const [f, setF] = useState({
     title: item?.title || "",
     notes: item?.notes || "",
