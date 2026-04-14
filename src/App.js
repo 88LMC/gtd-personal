@@ -1726,12 +1726,10 @@ function CoachView({ items, projects }) {
   const callCoach = async (msgs) => {
     setLoading(true);
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch("/api/coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
           system: systemPrompt,
           messages: msgs,
         }),
