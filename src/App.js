@@ -56,6 +56,8 @@ const calcNextDate = (fromDate, recurrence, customDays) => {
   if (recurrence === "custom")  d.setDate(d.getDate() + (parseInt(customDays) || 1));
   return d.toISOString().slice(0,10);
 };
+
+const parseHashtags = (str = "") =>
   (str.match(/#[\w-áéíóúñÁÉÍÓÚÑ]+/gi) || []).map(t => t.toLowerCase());
 
 const getAllTags = (items) => {
