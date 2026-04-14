@@ -299,9 +299,10 @@ const css = `
   .cal-month-items { display: flex; flex-direction: column; gap: 2px; }
   .cal-month-pill { font-size: 10px; font-weight: 500; color: #111827; padding: 2px 5px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
   .cal-month-more { font-size: 9px; color: #9ca3af; font-weight: 600; padding: 1px 4px; }
+  /* LOADING */
   .loading { display: flex; align-items: center; justify-content: center; height: 100vh; background: #fff; color: #9ca3af; font-size: 14px; font-family: 'Inter', sans-serif; gap: 10px; }
 
-  /* GLOBAL SEARCH */
+  /* SEARCH RESULTS */
   .gsearch-wrap { flex: 1; max-width: 320px; position: relative; }
   .gsearch-inp { width: 100%; background: #f9fafb; border: 1px solid #f0f0f0; border-radius: 7px; color: #111827; font-family: 'DM Mono', monospace; font-size: 12px; padding: 7px 12px 7px 32px; outline: none; transition: all 0.12s; }
   .gsearch-inp:focus { background: #fff; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,0.08); }
@@ -324,7 +325,27 @@ const css = `
   .done-btn { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #d1d5db; background: transparent; color: transparent; font-size: 10px; cursor: pointer; flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; padding: 0; }
   .done-btn:hover { border-color: #10b981; color: #10b981; background: #f0fdf4; }
 
-  /* SEARCH RESULTS */
+  /* SIDEBAR */
+  .app-layout { display: flex; flex: 1; min-height: 0; }
+  .sidebar { display: none; }
+  @media (min-width: 768px) {
+    .sidebar { display: flex; flex-direction: column; width: 220px; flex-shrink: 0; border-right: 1px solid #f0f0f0; background: #fafafa; padding: 16px 10px; position: sticky; top: 56px; height: calc(100vh - 56px); overflow-y: auto; }
+    .nav { display: none; }
+    .main { max-width: 100%; padding: 24px 32px 100px; }
+  }
+  .sidebar-section { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #9ca3af; padding: 6px 8px 4px; margin-top: 12px; }
+  .sidebar-section:first-child { margin-top: 0; }
+  .sidebar-btn { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; border: none; background: transparent; color: #6b7280; cursor: pointer; font-size: 13px; font-weight: 500; width: 100%; text-align: left; transition: all 0.1s; font-family: inherit; position: relative; }
+  .sidebar-btn:hover { background: #f0f0f0; color: #111827; }
+  .sidebar-btn.active { background: #ede9fe; color: #4f46e5; font-weight: 600; }
+  .sidebar-badge { margin-left: auto; background: #e5e7eb; color: #6b7280; border-radius: 8px; padding: 1px 6px; font-size: 10px; font-weight: 600; }
+  .sidebar-btn.active .sidebar-badge { background: #c4b5fd; color: #4f46e5; }
+  .sidebar-icon { font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; }
+  .sidebar-divider { border: none; border-top: 1px solid #f0f0f0; margin: 10px 0; }
+  .sidebar-capture { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 6px; border: 1px dashed #d1d5db; background: transparent; color: #9ca3af; cursor: pointer; font-size: 12px; font-weight: 500; width: 100%; text-align: left; transition: all 0.1s; font-family: inherit; margin-top: 4px; }
+  .sidebar-capture:hover { border-color: #4f46e5; color: #4f46e5; background: #f5f3ff; }
+
+  /* LOADING */
   .search-results { }
   .search-results-header { font-size: 12px; color: #9ca3af; margin-bottom: 14px; font-family: 'DM Mono', monospace; }
   .search-bucket-group { margin-bottom: 16px; }
@@ -1619,7 +1640,6 @@ export default function App() {
             {globalSearch && <button className="gsearch-clear" onClick={() => setGlobalSearch("")}>✕</button>}
           </div>
           <div className="topbar-right">
-            <div className={`sync-dot${online?"":" off"}`} title={online?"Sincronizado":"Sin conexión"} />
             <button className={`topbtn${view==="calendar"?" active":""}`} onClick={() => { setView("calendar"); setGlobalSearch(""); }}>📆</button>
             <button className={`topbtn${view==="dashboard"?" active":""}`} onClick={() => { setView("dashboard"); setGlobalSearch(""); }}>🏠</button>
             <button className={`topbtn${view==="projects"?" active":""}`} onClick={() => { setView("projects"); setGlobalSearch(""); }}>📁</button>
@@ -1627,7 +1647,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* BUCKET NAV */}
+        {/* BUCKET NAV — móvil only */}
         <div className="nav">
           {BUCKETS.map(b => {
             const count = items.filter(i=>i.bucket===b.id).length;
@@ -1643,34 +1663,91 @@ export default function App() {
           })}
         </div>
 
-        {/* MAIN */}
-        <div className="main">
-          {globalSearch.trim() ? (
-            <GlobalSearchResults query={globalSearch} items={items} projects={projects} onEdit={openEdit} />
-          ) : view === "dashboard" ? (
-            <Dashboard items={items} projects={projects} onEdit={openEdit} onDone={markDone}
-              onNewItem={() => { setEditItem(null); setShowProcess(true); }}
-              onCapture={() => setShowCapture(true)} />
-          ) : view === "bucket" ? (
-            <BucketView bucket={bucket} items={items} projects={projects} allItems={items}
-              onEdit={openEdit} onMoveTo={moveTo} onDone={markDone} onTagClick={handleTagClick}
-              activeTag={activeTag} search={search} setSearch={setSearch} setActiveTag={setActiveTag}
-              unprocessed={unprocessed} />
-          ) : view === "projects" ? (
-            <ProjectsView projects={projects} items={items}
-              onEdit={openEdit} onDone={markDone}
-              onNew={() => { setEditProj(null); setShowProj(true); }}
-              onEditProj={p => { setEditProj(p); setShowProj(true); }}
-              onNewItem={(pid, defaultBucket) => {
-                setEditItem({ projectId: pid, bucket: defaultBucket || "next", processed: false });
-                setNewItemProjId(pid);
-                setShowProcess(true);
-              }} />
-          ) : view === "calendar" ? (
-            <CalendarView items={items} projects={projects} onEdit={openEdit} />
-          ) : view === "settings" ? (
-            <SettingsView items={items} projects={projects} online={online} />
-          ) : null}
+        <div className="app-layout">
+          {/* SIDEBAR — desktop only */}
+          <div className="sidebar">
+            <button className="sidebar-capture" onClick={() => setShowCapture(true)}>
+              <span>+</span> Capturar pensamiento
+            </button>
+            <hr className="sidebar-divider" />
+
+            <div className="sidebar-section">Vistas</div>
+            {[
+              ["dashboard","🏠","Dashboard",null],
+              ["calendar","📆","Calendario",null],
+              ["projects","📁","Proyectos",null],
+              ["settings","⚙️","Configuración",null],
+            ].map(([v,icon,lbl]) => (
+              <button key={v} className={`sidebar-btn${view===v?" active":""}`}
+                onClick={() => { setView(v); setGlobalSearch(""); }}>
+                <span className="sidebar-icon">{icon}</span>{lbl}
+              </button>
+            ))}
+
+            <hr className="sidebar-divider" />
+            <div className="sidebar-section">Bandejas</div>
+            {BUCKETS.map(b => {
+              const count = items.filter(i=>i.bucket===b.id).length;
+              const active = view==="bucket" && bucket===b.id;
+              return (
+                <button key={b.id} className={`sidebar-btn${active?" active":""}`}
+                  onClick={() => { setBucket(b.id); setView("bucket"); setSearch(""); setActiveTag(""); }}>
+                  <span className="sidebar-icon">{b.icon}</span>
+                  {b.label}
+                  {count > 0 && <span className="sidebar-badge">{count}</span>}
+                </button>
+              );
+            })}
+
+            <hr className="sidebar-divider" />
+            <div className="sidebar-section">Proyectos</div>
+            {projects.filter(p=>p.status==="active").map(p => (
+              <button key={p._id} className="sidebar-btn"
+                onClick={() => { setView("projects"); setGlobalSearch(""); }}>
+                <span className="sidebar-icon" style={{color:p.color||"#4f46e5"}}>●</span>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</span>
+              </button>
+            ))}
+            {projects.filter(p=>p.status==="active").length === 0 && (
+              <div style={{fontSize:11,color:"#d1d5db",padding:"4px 10px"}}>Sin proyectos activos</div>
+            )}
+
+            <div style={{flex:1}} />
+            <div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 10px",marginTop:8}}>
+              <div className={`sync-dot${online?"":" off"}`} />
+              <span style={{fontSize:10,color:"#9ca3af"}}>{online?"Sincronizado":"Sin conexión"}</span>
+            </div>
+          </div>
+
+          {/* MAIN */}
+          <div className="main">
+            {globalSearch.trim() ? (
+              <GlobalSearchResults query={globalSearch} items={items} projects={projects} onEdit={openEdit} />
+            ) : view === "dashboard" ? (
+              <Dashboard items={items} projects={projects} onEdit={openEdit} onDone={markDone}
+                onNewItem={() => { setEditItem(null); setShowProcess(true); }}
+                onCapture={() => setShowCapture(true)} />
+            ) : view === "bucket" ? (
+              <BucketView bucket={bucket} items={items} projects={projects} allItems={items}
+                onEdit={openEdit} onMoveTo={moveTo} onDone={markDone} onTagClick={handleTagClick}
+                activeTag={activeTag} search={search} setSearch={setSearch} setActiveTag={setActiveTag}
+                unprocessed={unprocessed} />
+            ) : view === "projects" ? (
+              <ProjectsView projects={projects} items={items}
+                onEdit={openEdit} onDone={markDone}
+                onNew={() => { setEditProj(null); setShowProj(true); }}
+                onEditProj={p => { setEditProj(p); setShowProj(true); }}
+                onNewItem={(pid, defaultBucket) => {
+                  setEditItem({ projectId: pid, bucket: defaultBucket || "next", processed: false });
+                  setNewItemProjId(pid);
+                  setShowProcess(true);
+                }} />
+            ) : view === "calendar" ? (
+              <CalendarView items={items} projects={projects} onEdit={openEdit} />
+            ) : view === "settings" ? (
+              <SettingsView items={items} projects={projects} online={online} />
+            ) : null}
+          </div>
         </div>
 
         {/* FAB */}
