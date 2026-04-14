@@ -325,6 +325,11 @@ const css = `
   .done-btn { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #d1d5db; background: transparent; color: transparent; font-size: 10px; cursor: pointer; flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; padding: 0; }
   .done-btn:hover { border-color: #10b981; color: #10b981; background: #f0fdf4; }
 
+  /* CONVERT TO PROJECT */
+  .convert-option { padding: 12px 14px; border: 1.5px solid #f0f0f0; border-radius: 10px; cursor: pointer; transition: all 0.12s; background: #fafafa; }
+  .convert-option:hover { border-color: #c4b5fd; background: #fafafe; }
+  .convert-option.selected { border-color: #4f46e5; background: #f5f3ff; }
+
   /* SIDEBAR */
   .app-layout { display: flex; flex: 1; min-height: 0; }
   .sidebar { display: none; }
@@ -704,6 +709,72 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose, onN
           <button className="btn btn-ghost" onClick={onClose}>Cerrar</button>
           <button className={`btn ${isNew?"btn-process":"btn-primary"}`} onClick={handleSave}>
             {isNew && onNext && unprocessedCount > 1 ? "✓ Procesar → siguiente" : isNew ? "✓ Procesar" : "Guardar"}
+          </button>
+        </div>
+
+        {/* CONVERTIR A PROYECTO */}
+        {item && !item.projectId && onConvertToProject && (
+          <div style={{marginTop:12,borderTop:"1px solid #f3f4f6",paddingTop:12}}>
+            <button onClick={() => onConvertToProject(item, f)}
+              style={{width:"100%",padding:"9px",borderRadius:8,border:"1px dashed #c4b5fd",background:"#fafafe",color:"#6d28d9",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all 0.12s"}}>
+              📁 Convertir en proyecto
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── CONVERT TO PROJECT MODAL ──────────────────────────────────────────────────
+function ConvertToProjectModal({ item, onConfirm, onClose }) {
+  const COLORS = ["#4f46e5","#d97706","#059669","#dc2626","#7c3aed","#0891b2","#ea580c","#db2777"];
+  const [role, setRole] = useState(""); // "first-action" | "description"
+  const [projColor, setProjColor] = useState("#4f46e5");
+
+  return (
+    <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box">
+        <div className="modal-header">
+          <span className="modal-title">📁 Convertir en proyecto</span>
+          <button className="close-btn" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-subtitle">"{item.title}"</div>
+
+        <div style={{marginBottom:16}}>
+          <label className="field-label">¿Qué rol tendrá esta acción en el proyecto?</label>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div className={`convert-option${role==="first-action"?" selected":""}`}
+              onClick={() => setRole("first-action")}>
+              <div style={{fontSize:16,marginBottom:4}}>⚡ Primera acción</div>
+              <div style={{fontSize:12,color:"#6b7280",lineHeight:1.5}}>
+                Esta tarea se convierte en la primera next action del nuevo proyecto. El proyecto empieza aquí.
+              </div>
+            </div>
+            <div className={`convert-option${role==="description"?" selected":""}`}
+              onClick={() => setRole("description")}>
+              <div style={{fontSize:16,marginBottom:4}}>🎯 Resultado esperado</div>
+              <div style={{fontSize:12,color:"#6b7280",lineHeight:1.5}}>
+                Esta tarea describe el resultado final del proyecto. Empezarás a agregar acciones desde cero.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <label className="field-label">Color del proyecto</label>
+        <div className="color-row" style={{marginBottom:16}}>
+          {COLORS.map(c => (
+            <div key={c} className="color-dot" onClick={() => setProjColor(c)}
+              style={{background:c,border:projColor===c?"3px solid #111827":"3px solid transparent"}} />
+          ))}
+        </div>
+
+        <div className="btn-row">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" disabled={!role}
+            style={{opacity:role?1:0.4}}
+            onClick={() => { if (role) { onConfirm(role, projColor); onClose(); } }}>
+            Crear proyecto →
           </button>
         </div>
       </div>
@@ -1587,6 +1658,8 @@ export default function App() {
   const [showCapture, setShowCapture] = useState(false);
   const [showProcess, setShowProcess] = useState(false);
   const [showProj, setShowProj] = useState(false);
+  const [showConvert, setShowConvert] = useState(false);
+  const [convertItem, setConvertItem] = useState(null);
   const [editItem, setEditItem] = useState(null);
   const [editProj, setEditProj] = useState(null);
   const [newItemProjId, setNewItemProjId] = useState("");
@@ -1630,6 +1703,26 @@ export default function App() {
   const delProj = async (id) => {
     for (const i of allDocs.filter(d => d.type==="item" && d.projectId===id)) await db.put({...i,projectId:""});
     await db.del(id);
+  };
+  const convertToProject = async (item, role, color) => {
+    // Create project
+    const projId = `project_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+    await db.put({
+      _id: projId,
+      type: "project",
+      title: item.title,
+      description: role === "description" ? item.title : "",
+      status: "active",
+      color,
+      updatedAt: Date.now(),
+    });
+    if (role === "first-action") {
+      // Link item to project as first action, move to next
+      await db.put({ ...item, projectId: projId, bucket: "next", processed: true });
+    } else {
+      // Archive original item (it's the description), project starts fresh
+      await db.put({ ...item, projectId: projId, bucket: "archive", processed: true });
+    }
   };
   const moveTo = async (id, nb) => {
     const item = allDocs.find(d => d._id===id);
@@ -1788,12 +1881,28 @@ export default function App() {
             unprocessedCount={unprocessed.length}
             onSave={async d => { if (newItemProjId && !d.projectId) d.projectId = newItemProjId; await saveItem(d); }}
             onDelete={delItem}
+            onConvertToProject={(item, f) => {
+              setConvertItem(item);
+              setShowConvert(true);
+              setShowProcess(false);
+            }}
             onNext={() => {
               const remaining = items.filter(i => i.bucket === "inbox" && !i.processed && i._id !== editItem?._id);
               if (remaining.length > 0) setEditItem(remaining[0]);
               else { setShowProcess(false); setEditItem(null); }
             }}
             onClose={() => { setShowProcess(false); setEditItem(null); setNewItemProjId(""); }} />
+        )}
+        {showConvert && convertItem && (
+          <ConvertToProjectModal
+            item={convertItem}
+            onConfirm={async (role, color) => {
+              await convertToProject(convertItem, role, color);
+              setShowConvert(false);
+              setConvertItem(null);
+              setView("projects");
+            }}
+            onClose={() => { setShowConvert(false); setConvertItem(null); }} />
         )}
         {showProj && (
           <ProjectForm project={editProj} onSave={saveProj} onDelete={delProj}
