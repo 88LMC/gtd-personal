@@ -1795,7 +1795,6 @@ function CoachView({ items, projects }) {
   const [pastSessions, setPastSessions] = useState([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [checkinDone, setCheckinDone] = useState(false);
-  const [checkinAnswer, setCheckinAnswer] = useState(""); // "light" | "heavy"
 
   // Verificar si ya hizo check-in hoy
   const todayKey = new Date().toISOString().slice(0, 10);
@@ -1818,7 +1817,6 @@ function CoachView({ items, projects }) {
     const done = sessionStorage.getItem(checkinStorageKey);
     if (done) {
       setCheckinDone(true);
-      setCheckinAnswer(done);
     }
   }, [checkinStorageKey]);
 
@@ -1878,7 +1876,6 @@ Usa este historial para dar continuidad — menciona lo que se habló si es rele
 
   const handleCheckin = (answer) => {
     sessionStorage.setItem(checkinStorageKey, answer);
-    setCheckinAnswer(answer);
     setCheckinDone(true);
     // Arrancar sesión automáticamente según respuesta
     const starter = answer === "light"
