@@ -1919,6 +1919,7 @@ Usa este historial para dar continuidad — menciona lo que se habló si es rele
       )}
 
       {!sessionStarted && checkinDone && (
+        <div>
           {/* CONTEXTO GTD */}
           <div style={{background:"linear-gradient(135deg,#fafaf9,#f5f3ff)",border:"1px solid #e9e9f0",borderLeft:"3px solid #4f46e5",borderRadius:10,padding:"16px 18px",marginBottom:16}}>
             <div style={{fontSize:9,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"#7c3aed",marginBottom:6}}>Tu sistema ahora</div>
@@ -1979,6 +1980,7 @@ Usa este historial para dar continuidad — menciona lo que se habló si es rele
       )}
 
       {sessionStarted && (
+        <div>
           <div style={{background:"#fff",border:"1px solid #f0f0f0",borderRadius:12,padding:"16px",marginBottom:12,minHeight:300,maxHeight:"60vh",overflowY:"auto",display:"flex",flexDirection:"column",gap:12}}>
             {messages.map((m,i) => (
               <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
