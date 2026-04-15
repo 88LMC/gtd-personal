@@ -105,6 +105,18 @@ const css = `
   .topbtn:hover { background: #f9fafb; color: #374151; }
   .topbtn.active { background: #f5f3ff; color: #4f46e5; font-weight: 600; }
 
+  /* MOBILE BOTTOM NAV */
+  .bottom-nav { display: flex; position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #f0f0f0; z-index: 200; padding: 6px 0 8px; justify-content: space-around; align-items: center; }
+  @media (min-width: 768px) { .bottom-nav { display: none; } }
+  .bottom-nav-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 12px; border: none; background: transparent; cursor: pointer; font-family: inherit; flex: 1; transition: all 0.12s; }
+  .bottom-nav-btn .bn-icon { font-size: 20px; line-height: 1; }
+  .bottom-nav-btn .bn-label { font-size: 9px; font-weight: 600; color: #9ca3af; letter-spacing: 0.02em; }
+  .bottom-nav-btn.active .bn-label { color: #4f46e5; }
+  .bottom-nav-btn.active .bn-icon { filter: none; }
+  .bottom-nav-more { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 12px; border: none; background: transparent; cursor: pointer; font-family: inherit; flex: 1; }
+  .bottom-nav-more .bn-icon { font-size: 20px; color: #9ca3af; }
+  .bottom-nav-more .bn-label { font-size: 9px; font-weight: 600; color: #9ca3af; }
+
   /* HAMBURGER */
   .hamburger { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: none; background: transparent; cursor: pointer; border-radius: 8px; color: #374151; font-size: 20px; }
   .hamburger:hover { background: #f9fafb; }
@@ -137,7 +149,8 @@ const css = `
   .badge-count { background: var(--bt); color: #fff; border-radius: 10px; padding: 1px 6px; font-size: 10px; font-weight: 700; opacity: 0.9; }
 
   /* MAIN */
-  .main { flex: 1; padding: 24px 24px 100px; max-width: 860px; margin: 0 auto; width: 100%; }
+  .main { flex: 1; padding: 16px 16px 130px; max-width: 860px; margin: 0 auto; width: 100%; }
+  @media (min-width: 768px) { .main { padding: 24px 32px 100px; } }
 
   /* TRANSURFING BANNER */
   .tf-banner { background: linear-gradient(135deg, #fafaf9 0%, #f5f3ff 100%); border: 1px solid #e9e9f0; border-left: 3px solid #4f46e5; border-radius: 10px; padding: 14px 18px; margin-bottom: 24px; cursor: pointer; transition: all 0.2s; }
@@ -222,7 +235,8 @@ const css = `
   .qbtn:hover { border-color: #c4b5fd; color: #4f46e5; }
 
   /* FAB */
-  .fab { position: fixed; bottom: 24px; right: 24px; width: 52px; height: 52px; border-radius: 50%; background: #4f46e5; border: none; color: #fff; font-size: 22px; cursor: pointer; box-shadow: 0 4px 16px rgba(79,70,229,0.35); display: flex; align-items: center; justify-content: center; z-index: 200; transition: all 0.15s; }
+  .fab { display: none; position: fixed; bottom: 24px; right: 24px; width: 52px; height: 52px; border-radius: 50%; background: #4f46e5; border: none; color: #fff; font-size: 22px; cursor: pointer; box-shadow: 0 4px 16px rgba(79,70,229,0.35); align-items: center; justify-content: center; z-index: 200; transition: all 0.15s; }
+  @media (min-width: 768px) { .fab { display: flex; } }
   .fab:hover { background: #4338ca; transform: scale(1.05); }
 
   /* MODALS */
@@ -2214,8 +2228,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* BUCKET NAV — móvil only */}
-        <div className="nav">
+        {/* BUCKET NAV — desktop only via sidebar, mobile hidden */}
+        <div className="nav" style={{display:"none"}}>
           {BUCKETS.map(b => {
             const count = items.filter(i=>i.bucket===b.id).length;
             const active = view==="bucket" && bucket===b.id;
@@ -2228,6 +2242,36 @@ export default function App() {
               </button>
             );
           })}
+        </div>
+
+        {/* MOBILE BOTTOM NAV */}
+        <div className="bottom-nav">
+          <button className={`bottom-nav-btn${view==="dashboard"?" active":""}`}
+            onClick={() => { setView("dashboard"); setGlobalSearch(""); }}>
+            <span className="bn-icon">🏠</span>
+            <span className="bn-label">Inicio</span>
+          </button>
+          <button className={`bottom-nav-btn${view==="bucket"&&bucket==="inbox"?" active":""}`}
+            onClick={() => { setBucket("inbox"); setView("bucket"); setSearch(""); setActiveTag(""); }}>
+            <span className="bn-icon">📥</span>
+            <span className="bn-label" style={{color: items.filter(i=>i.bucket==="inbox"&&!i.processed).length>0?"#ef4444":undefined}}>
+              {items.filter(i=>i.bucket==="inbox"&&!i.processed).length>0 ? `${items.filter(i=>i.bucket==="inbox"&&!i.processed).length} inbox` : "Inbox"}
+            </span>
+          </button>
+          <button className={`bottom-nav-btn${view==="coach"?" active":""}`}
+            onClick={() => { setView("coach"); setGlobalSearch(""); }}>
+            <span className="bn-icon">🧠</span>
+            <span className="bn-label">Coach</span>
+          </button>
+          <button className={`bottom-nav-btn${view==="calendar"?" active":""}`}
+            onClick={() => { setView("calendar"); setGlobalSearch(""); }}>
+            <span className="bn-icon">📅</span>
+            <span className="bn-label">Agenda</span>
+          </button>
+          <button className="bottom-nav-more" onClick={() => setDrawerOpen(true)}>
+            <span className="bn-icon">☰</span>
+            <span className="bn-label">Más</span>
+          </button>
         </div>
 
         <div className="app-layout">
