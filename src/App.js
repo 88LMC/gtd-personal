@@ -1746,7 +1746,6 @@ NUNCA:
 - Dar listas de tareas — eso es el GTD, no el Coach
 - Crear ansiedad sobre las deudas — eso es importancia excesiva. La frecuencia correcta es certeza + movimiento`;
 };
-};
 
 // ── COACH VIEW ────────────────────────────────────────────────────────────────
 function CoachView({ items, projects }) {
