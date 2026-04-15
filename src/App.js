@@ -1130,6 +1130,14 @@ function BucketView({ bucket, items, projects, allItems, onEdit, onMoveTo, onDon
           !i.hashtags?.toLowerCase().includes(q) && !i.context?.toLowerCase().includes(q)) return false;
     }
     return true;
+  }).sort((a, b) => {
+    // Agenda y Waiting: ordenar por fecha (vencidas primero, luego más próximas)
+    if (bucket === "agenda" || bucket === "waiting") {
+      if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+      if (a.dueDate) return -1; // con fecha primero
+      if (b.dueDate) return 1;
+    }
+    return 0;
   });
 
   const filterLabel = dateFilter === "overdue" ? "🚨 Vencidas" : dateFilter === "today" ? "📅 Para hoy" : dateFilter === "next7" ? "🔜 Próximos 7 días" : "";
