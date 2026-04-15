@@ -94,15 +94,39 @@ const css = `
   .gtd-root { min-height: 100vh; background: #ffffff; color: #1a1a2e; font-family: 'Inter', sans-serif; display: flex; flex-direction: column; font-size: 14px; line-height: 1.5; }
 
   /* TOPBAR */
-  .topbar { position: sticky; top: 0; z-index: 100; background: rgba(255,255,255,0.97); backdrop-filter: blur(12px); border-bottom: 1px solid #f0f0f0; height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; }
+  .topbar { position: sticky; top: 0; z-index: 100; background: rgba(255,255,255,0.97); backdrop-filter: blur(12px); border-bottom: 1px solid #f0f0f0; height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
   .logo { font-size: 16px; font-weight: 700; letter-spacing: -0.5px; color: #1a1a2e; display: flex; align-items: center; gap: 8px; }
   .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: #4f46e5; }
   .sync-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
   .sync-dot.off { background: #ef4444; }
-  .topbar-right { display: flex; gap: 4px; align-items: center; }
+  .topbar-right { display: none; gap: 4px; align-items: center; }
+  @media (min-width: 768px) { .topbar-right { display: flex; } .topbar { padding: 0 24px; } }
   .topbtn { background: transparent; border: none; border-radius: 6px; color: #9ca3af; padding: 6px 10px; font-size: 13px; cursor: pointer; font-family: inherit; font-weight: 500; transition: all 0.12s; }
   .topbtn:hover { background: #f9fafb; color: #374151; }
   .topbtn.active { background: #f5f3ff; color: #4f46e5; font-weight: 600; }
+
+  /* HAMBURGER */
+  .hamburger { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: none; background: transparent; cursor: pointer; border-radius: 8px; color: #374151; font-size: 20px; }
+  .hamburger:hover { background: #f9fafb; }
+  @media (min-width: 768px) { .hamburger { display: none; } }
+
+  /* MOBILE DRAWER */
+  .drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 400; }
+  .drawer-overlay.open { display: block; }
+  .drawer { position: fixed; top: 0; left: 0; bottom: 0; width: 260px; background: #fff; z-index: 500; transform: translateX(-100%); transition: transform 0.25s ease; border-right: 1px solid #f0f0f0; display: flex; flex-direction: column; padding: 16px 10px; overflow-y: auto; }
+  .drawer.open { transform: translateX(0); }
+  .drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 16px; }
+  .drawer-logo { font-size: 15px; font-weight: 700; color: #1a1a2e; display: flex; align-items: center; gap: 6px; }
+  .drawer-close { background: #f3f4f6; border: none; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font-size: 14px; color: #6b7280; display: flex; align-items: center; justify-content: center; }
+  .drawer-section { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #9ca3af; padding: 6px 8px 4px; margin-top: 10px; }
+  .drawer-btn { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 6px; border: none; background: transparent; color: #6b7280; cursor: pointer; font-size: 13px; font-weight: 500; width: 100%; text-align: left; font-family: inherit; transition: all 0.1s; }
+  .drawer-btn:hover { background: #f0f0f0; color: #111827; }
+  .drawer-btn.active { background: #ede9fe; color: #4f46e5; font-weight: 600; }
+  .drawer-badge { margin-left: auto; background: #e5e7eb; color: #6b7280; border-radius: 8px; padding: 1px 6px; font-size: 10px; font-weight: 600; }
+  .drawer-btn.active .drawer-badge { background: #c4b5fd; color: #4f46e5; }
+  .drawer-divider { border: none; border-top: 1px solid #f0f0f0; margin: 8px 0; }
+  .drawer-capture { display: flex; align-items: center; gap: 6px; padding: 9px 10px; border-radius: 6px; border: 1px dashed #d1d5db; background: transparent; color: #9ca3af; cursor: pointer; font-size: 12px; font-weight: 500; width: 100%; text-align: left; font-family: inherit; margin-bottom: 8px; transition: all 0.1s; }
+  .drawer-capture:hover { border-color: #4f46e5; color: #4f46e5; background: #f5f3ff; }
 
   /* NAV */
   .nav { display: flex; gap: 2px; overflow-x: auto; padding: 8px 24px; border-bottom: 1px solid #f0f0f0; background: #fff; scrollbar-width: none; }
@@ -2036,6 +2060,7 @@ export default function App() {
   const [editProj, setEditProj] = useState(null);
   const [newItemProjId, setNewItemProjId] = useState("");
   const [online, setOnline] = useState(navigator.onLine);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     const unsub = db.listen(docs => setAllDocs(docs));
@@ -2117,11 +2142,14 @@ export default function App() {
 
         {/* TOPBAR */}
         <div className="topbar">
-          <div className="logo"><div className="logo-dot" />GTD Personal</div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <button className="hamburger" onClick={() => setDrawerOpen(true)}>☰</button>
+            <div className="logo"><div className="logo-dot" />GTD Personal</div>
+          </div>
           <div className="gsearch-wrap">
             <span className="gsearch-icon">🔍</span>
             <input className="gsearch-inp"
-              placeholder="Buscar título, #hashtag, @contexto, responsable..."
+              placeholder="Buscar..."
               value={globalSearch}
               onChange={e => setGlobalSearch(e.target.value)}
               onKeyDown={e => e.key === "Escape" && setGlobalSearch("")}
@@ -2134,6 +2162,55 @@ export default function App() {
             <button className={`topbtn${view==="dashboard"?" active":""}`} onClick={() => { setView("dashboard"); setGlobalSearch(""); }}>🏠</button>
             <button className={`topbtn${view==="projects"?" active":""}`} onClick={() => { setView("projects"); setGlobalSearch(""); }}>📁</button>
             <button className={`topbtn${view==="settings"?" active":""}`} onClick={() => { setView("settings"); setGlobalSearch(""); }}>⚙️</button>
+          </div>
+        </div>
+
+        {/* MOBILE DRAWER */}
+        <div className={`drawer-overlay${drawerOpen?" open":""}`} onClick={() => setDrawerOpen(false)} />
+        <div className={`drawer${drawerOpen?" open":""}`}>
+          <div className="drawer-header">
+            <div className="drawer-logo"><div className="logo-dot" />GTD Personal</div>
+            <button className="drawer-close" onClick={() => setDrawerOpen(false)}>✕</button>
+          </div>
+          <button className="drawer-capture" onClick={() => { setShowCapture(true); setDrawerOpen(false); }}>
+            + Capturar pensamiento
+          </button>
+          <hr className="drawer-divider" />
+          <div className="drawer-section">Vistas</div>
+          {[["dashboard","🏠","Dashboard"],["coach","🧠","Coach"],["calendar","📆","Calendario"],["projects","📁","Proyectos"],["settings","⚙️","Configuración"]].map(([v,icon,lbl]) => (
+            <button key={v} className={`drawer-btn${view===v?" active":""}`}
+              onClick={() => { setView(v); setGlobalSearch(""); setDrawerOpen(false); }}>
+              <span style={{fontSize:14}}>{icon}</span>{lbl}
+            </button>
+          ))}
+          <hr className="drawer-divider" />
+          <div className="drawer-section">Bandejas</div>
+          {BUCKETS.map(b => {
+            const count = items.filter(i=>i.bucket===b.id).length;
+            const active = view==="bucket" && bucket===b.id;
+            return (
+              <button key={b.id} className={`drawer-btn${active?" active":""}`}
+                onClick={() => { setBucket(b.id); setView("bucket"); setSearch(""); setActiveTag(""); setDrawerOpen(false); }}>
+                <span style={{fontSize:14}}>{b.icon}</span>{b.label}
+                {count > 0 && <span className="drawer-badge">{count}</span>}
+              </button>
+            );
+          })}
+          {projects.filter(p=>p.status==="active").length > 0 && <>
+            <hr className="drawer-divider" />
+            <div className="drawer-section">Proyectos</div>
+            {projects.filter(p=>p.status==="active").map(p => (
+              <button key={p._id} className="drawer-btn"
+                onClick={() => { setView("projects"); setDrawerOpen(false); }}>
+                <span style={{color:p.color||"#4f46e5",fontSize:10}}>●</span>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</span>
+              </button>
+            ))}
+          </>}
+          <div style={{flex:1}} />
+          <div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 10px"}}>
+            <div className={`sync-dot${online?"":" off"}`} />
+            <span style={{fontSize:10,color:"#9ca3af"}}>{online?"Sincronizado":"Sin conexión"}</span>
           </div>
         </div>
 
