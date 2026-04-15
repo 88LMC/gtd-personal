@@ -1722,6 +1722,16 @@ CONTEXTO ACTUAL DEL GTD DE LM:
 - Next actions pendientes: ${nextActions}
 - Proyectos activos: ${activeProjects || "ninguno registrado"}
 
+PATRONES DE LM QUE EL COACH DEBE RECONOCER INMEDIATAMENTE:
+- Usa el "día a día de Van Heusen" como excusa para no ejecutar proyectos propios
+- Su voz crítica dice "no es suficientemente bueno" justo antes de lanzar algo
+- Confunde planificación con acción — puede hablar de un proyecto por semanas sin moverlo
+- Cuando está en frecuencia alta: hombros sin peso, decisiones rápidas, no necesita validación externa
+- Cuando está en péndulo: busca más información, más perfección, más preparación antes de actuar
+- Su ancla física es la pulsera. Su ancla de frecuencia es el texto de Místico.
+- Si menciona Van Heusen como razón para no avanzar en algo propio — nombrarlo como péndulo directamente
+- Si está "preparando" o "afinando" algo por más de una semana — preguntarle qué está evitando realmente
+
 TU MISIÓN:
 1. Detectar si LM está operando desde el canal correcto o desde un péndulo
 2. Hacer preguntas que expandan — no que administren
@@ -1748,11 +1758,48 @@ NUNCA:
 };
 
 // ── COACH VIEW ────────────────────────────────────────────────────────────────
+const COACH_COLL = "coach_sessions";
+
+const saveCoachSession = async (messages) => {
+  if (messages.length < 2) return;
+  const id = `session_${Date.now()}`;
+  const ref = doc(firestore, COACH_COLL, id);
+  const summary = messages.slice(0, 4).map(m =>
+    `${m.role === "user" ? "LM" : "Coach"}: ${m.content.slice(0, 200)}`
+  ).join("\n");
+  await setDoc(ref, {
+    _id: id,
+    date: new Date().toISOString().slice(0, 10),
+    timestamp: Date.now(),
+    summary,
+    messageCount: messages.length,
+  });
+};
+
+const loadRecentSessions = async () => {
+  try {
+    const { getDocs, query, orderBy, limit } = await import("firebase/firestore");
+    const q = query(collection(firestore, COACH_COLL), orderBy("timestamp", "desc"), limit(5));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data()).reverse();
+  } catch {
+    return [];
+  }
+};
+
 function CoachView({ items, projects }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [pastSessions, setPastSessions] = useState([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
+  const [checkinDone, setCheckinDone] = useState(false);
+  const [checkinAnswer, setCheckinAnswer] = useState(""); // "light" | "heavy"
+
+  // Verificar si ya hizo check-in hoy
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const checkinStorageKey = `coach_checkin_${todayKey}`;
 
   const STARTERS = [
     "¿En qué frecuencia estás operando ahora mismo?",
@@ -1762,7 +1809,30 @@ function CoachView({ items, projects }) {
     "¿Cuándo fue la última vez que sentiste la certeza de 'it is done'?",
   ];
 
-  const systemPrompt = buildCoachPrompt(items, projects);
+  useEffect(() => {
+    loadRecentSessions().then(sessions => {
+      setPastSessions(sessions);
+      setLoadingSessions(false);
+    });
+    // Verificar si ya hizo check-in hoy
+    const done = sessionStorage.getItem(checkinStorageKey);
+    if (done) {
+      setCheckinDone(true);
+      setCheckinAnswer(done);
+    }
+  }, [checkinStorageKey]);
+
+  const buildSystemWithMemory = () => {
+    const base = buildCoachPrompt(items, projects);
+    if (pastSessions.length === 0) return base;
+    const memory = pastSessions.map(s => `[${s.date}]\n${s.summary}`).join("\n\n");
+    return `${base}
+
+HISTORIAL DE SESIONES ANTERIORES (últimas ${pastSessions.length}):
+${memory}
+
+Usa este historial para dar continuidad — menciona lo que se habló si es relevante, no repitas preguntas ya respondidas, y nota la evolución de LM entre sesiones.`;
+  };
 
   const startSession = async (starter) => {
     setSessionStarted(true);
@@ -1777,10 +1847,7 @@ function CoachView({ items, projects }) {
       const response = await fetch("/api/coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          system: systemPrompt,
-          messages: msgs,
-        }),
+        body: JSON.stringify({ system: buildSystemWithMemory(), messages: msgs }),
       });
       const data = await response.json();
       const reply = data.content?.[0]?.text || "Error al conectar con el coach.";
@@ -1800,25 +1867,61 @@ function CoachView({ items, projects }) {
     await callCoach(newMsgs);
   };
 
-  const reset = () => { setMessages([]); setSessionStarted(false); setInput(""); };
+  const reset = async () => {
+    await saveCoachSession(messages);
+    const sessions = await loadRecentSessions();
+    setPastSessions(sessions);
+    setMessages([]);
+    setSessionStarted(false);
+    setInput("");
+  };
+
+  const handleCheckin = (answer) => {
+    sessionStorage.setItem(checkinStorageKey, answer);
+    setCheckinAnswer(answer);
+    setCheckinDone(true);
+    // Arrancar sesión automáticamente según respuesta
+    const starter = answer === "light"
+      ? "Hombros sin peso hoy. ¿Qué vamos a mover que lleva tiempo esperando?"
+      : "Hombros con peso hoy. ¿Qué péndulo está activo ahora mismo?";
+    startSession(starter);
+  };
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches";
 
   return (
     <div style={{maxWidth:680,margin:"0 auto"}}>
-      {/* HEADER */}
       <div style={{marginBottom:20}}>
-        <div style={{fontSize:20,fontWeight:700,color:"#111827",marginBottom:4,letterSpacing:-0.5}}>
-          🧠 Coach de Frecuencia
-        </div>
-        <div style={{fontSize:12,color:"#9ca3af"}}>
-          Anti-péndulos · Transurfing · Expansión continua
-        </div>
+        <div style={{fontSize:20,fontWeight:700,color:"#111827",marginBottom:4,letterSpacing:-0.5}}>🧠 Coach de Frecuencia</div>
+        <div style={{fontSize:12,color:"#9ca3af"}}>Anti-péndulos · Transurfing · Expansión continua</div>
       </div>
 
-      {!sessionStarted ? (
-        /* PANTALLA DE INICIO */
-        <div>
-          <div style={{background:"linear-gradient(135deg,#fafaf9,#f5f3ff)",border:"1px solid #e9e9f0",borderLeft:"3px solid #4f46e5",borderRadius:10,padding:"16px 18px",marginBottom:20}}>
-            <div style={{fontSize:9,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"#7c3aed",marginBottom:6}}>Contexto de tu sistema</div>
+      {/* CHECK-IN DIARIO — solo si no se ha hecho hoy */}
+      {!sessionStarted && !checkinDone && (
+        <div style={{background:"#fff",border:"1px solid #e9e9f0",borderLeft:"3px solid #4f46e5",borderRadius:12,padding:"24px 20px",marginBottom:20,textAlign:"center"}}>
+          <div style={{fontSize:16,fontWeight:700,color:"#111827",marginBottom:6}}>{greeting}, LM 👋</div>
+          <div style={{fontSize:13,color:"#6b7280",marginBottom:20,lineHeight:1.6}}>
+            Antes de arrancar —<br/>
+            <strong style={{color:"#374151"}}>¿Hombros con peso o sin peso hoy?</strong>
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+            <button onClick={() => handleCheckin("light")}
+              style={{padding:"12px 24px",background:"#f0fdf4",border:"2px solid #86efac",borderRadius:10,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,color:"#166534",transition:"all 0.12s"}}>
+              🌿 Sin peso
+            </button>
+            <button onClick={() => handleCheckin("heavy")}
+              style={{padding:"12px 24px",background:"#fff7ed",border:"2px solid #fed7aa",borderRadius:10,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,color:"#92400e",transition:"all 0.12s"}}>
+              🔺 Con peso
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!sessionStarted && checkinDone && (
+          {/* CONTEXTO GTD */}
+          <div style={{background:"linear-gradient(135deg,#fafaf9,#f5f3ff)",border:"1px solid #e9e9f0",borderLeft:"3px solid #4f46e5",borderRadius:10,padding:"16px 18px",marginBottom:16}}>
+            <div style={{fontSize:9,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"#7c3aed",marginBottom:6}}>Tu sistema ahora</div>
             <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
               {[
                 ["📥",items.filter(i=>i.bucket==="inbox"&&!i.processed).length,"sin procesar"],
@@ -1835,48 +1938,61 @@ function CoachView({ items, projects }) {
             </div>
           </div>
 
-          <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#9ca3af",marginBottom:10}}>
-            ¿Por dónde empezamos?
-          </div>
+          {/* SESIONES ANTERIORES */}
+          {!loadingSessions && pastSessions.length > 0 && (
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#9ca3af",marginBottom:8}}>
+                🕐 Sesiones anteriores ({pastSessions.length})
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                {pastSessions.slice().reverse().map((s,i) => (
+                  <div key={i} style={{background:"#f9fafb",border:"1px solid #f0f0f0",borderRadius:8,padding:"10px 12px"}}>
+                    <div style={{fontSize:10,color:"#9ca3af",marginBottom:3,fontFamily:"'DM Mono',monospace"}}>{s.date} · {s.messageCount} mensajes</div>
+                    <div style={{fontSize:12,color:"#374151",lineHeight:1.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                      {s.summary.split("\n")[0]}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* STARTERS */}
+          <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#9ca3af",marginBottom:8}}>¿Por dónde empezamos?</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {STARTERS.map((s,i) => (
               <button key={i} onClick={() => startSession(s)}
-                style={{textAlign:"left",padding:"12px 16px",background:"#fff",border:"1px solid #f0f0f0",borderRadius:10,cursor:"pointer",fontSize:13,color:"#374151",fontFamily:"inherit",fontWeight:500,transition:"all 0.12s",lineHeight:1.5}}>
+                style={{textAlign:"left",padding:"12px 16px",background:"#fff",border:"1px solid #f0f0f0",borderRadius:10,cursor:"pointer",fontSize:13,color:"#374151",fontFamily:"inherit",fontWeight:500,lineHeight:1.5}}>
                 {s}
               </button>
             ))}
           </div>
-          <div style={{marginTop:12}}>
+          <div style={{marginTop:10}}>
             <input
               style={{width:"100%",background:"#f9fafb",border:"1px solid #f0f0f0",borderRadius:8,color:"#111827",fontFamily:"inherit",fontSize:14,padding:"10px 14px",outline:"none"}}
               placeholder="O escribe tu propio punto de partida..."
-              value={input}
-              onChange={e => setInput(e.target.value)}
+              value={input} onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key==="Enter" && input.trim() && startSession(input.trim())}
             />
           </div>
         </div>
-      ) : (
-        /* CONVERSACIÓN */
-        <div>
+      )}
+
+      {sessionStarted && (
           <div style={{background:"#fff",border:"1px solid #f0f0f0",borderRadius:12,padding:"16px",marginBottom:12,minHeight:300,maxHeight:"60vh",overflowY:"auto",display:"flex",flexDirection:"column",gap:12}}>
             {messages.map((m,i) => (
               <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
-                <div style={{
-                  maxWidth:"80%",padding:"10px 14px",borderRadius:10,fontSize:13,lineHeight:1.6,
+                <div style={{maxWidth:"80%",padding:"10px 14px",borderRadius:10,fontSize:13,lineHeight:1.6,
                   background:m.role==="user"?"#4f46e5":"#f9fafb",
                   color:m.role==="user"?"#fff":"#111827",
-                  border:m.role==="assistant"?"1px solid #f0f0f0":"none",
-                }}>
+                  border:m.role==="assistant"?"1px solid #f0f0f0":"none"}}>
                   {m.content}
                 </div>
               </div>
             ))}
             {loading && (
               <div style={{display:"flex",justifyContent:"flex-start"}}>
-                <div style={{background:"#f9fafb",border:"1px solid #f0f0f0",borderRadius:10,padding:"10px 16px",fontSize:13,color:"#9ca3af"}}>
-                  Pensando...
-                </div>
+                <div style={{background:"#f9fafb",border:"1px solid #f0f0f0",borderRadius:10,padding:"10px 16px",fontSize:13,color:"#9ca3af"}}>Pensando...</div>
               </div>
             )}
           </div>
@@ -1884,8 +2000,7 @@ function CoachView({ items, projects }) {
             <input
               style={{flex:1,background:"#f9fafb",border:"1px solid #f0f0f0",borderRadius:8,color:"#111827",fontFamily:"inherit",fontSize:14,padding:"10px 14px",outline:"none"}}
               placeholder="Responde al coach..."
-              value={input}
-              onChange={e => setInput(e.target.value)}
+              value={input} onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key==="Enter" && sendMessage()}
               disabled={loading}
             />
@@ -1896,7 +2011,7 @@ function CoachView({ items, projects }) {
           </div>
           <button onClick={reset}
             style={{marginTop:10,background:"none",border:"none",color:"#9ca3af",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
-            ↩ Nueva sesión
+            ↩ Guardar y nueva sesión
           </button>
         </div>
       )}
