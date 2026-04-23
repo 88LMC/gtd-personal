@@ -587,9 +587,10 @@ function ProcessModal({ item, projects, allItems, onSave, onDelete, onClose, onN
 
   const handleSave = async () => {
     if (!f.title.trim()) return;
+    const savedId = item?._id;
     await onSave({ ...item, ...f, type: "item" });
     if (isNew && onNext) {
-      onNext(); // pasa al siguiente sin cerrar
+      onNext(savedId);
     } else {
       onClose();
     }
@@ -2391,8 +2392,8 @@ export default function App() {
               setShowConvert(true);
               setShowProcess(false);
             }}
-            onNext={() => {
-              const remaining = items.filter(i => i.bucket === "inbox" && !i.processed && i._id !== editItem?._id);
+            onNext={(processedId) => {
+              const remaining = allDocs.filter(i => i.type === "item" && i.bucket === "inbox" && !i.processed && i._id !== processedId);
               if (remaining.length > 0) setEditItem(remaining[0]);
               else { setShowProcess(false); setEditItem(null); }
             }}
