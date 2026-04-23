@@ -2383,7 +2383,7 @@ export default function App() {
           <CaptureModal onSave={async d => await saveItem(d)} onClose={() => setShowCapture(false)} />
         )}
         {showProcess && (
-          <ProcessModal item={editItem} projects={projects} allItems={items}
+          <ProcessModal key={editItem?._id || "new"} item={editItem} projects={projects} allItems={items}
             unprocessedCount={unprocessed.length}
             onSave={async d => { if (newItemProjId && !d.projectId) d.projectId = newItemProjId; await saveItem(d); }}
             onDelete={delItem}
@@ -2393,9 +2393,11 @@ export default function App() {
               setShowProcess(false);
             }}
             onNext={(processedId) => {
-              const remaining = allDocs.filter(i => i.type === "item" && i.bucket === "inbox" && !i.processed && i._id !== processedId);
-              if (remaining.length > 0) setEditItem(remaining[0]);
-              else { setShowProcess(false); setEditItem(null); }
+              setTimeout(() => {
+                const remaining = allDocs.filter(i => i.type === "item" && i.bucket === "inbox" && !i.processed && i._id !== processedId);
+                if (remaining.length > 0) setEditItem(remaining[0]);
+                else { setShowProcess(false); setEditItem(null); }
+              }, 300);
             }}
             onClose={() => { setShowProcess(false); setEditItem(null); setNewItemProjId(""); }} />
         )}
