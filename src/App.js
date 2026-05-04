@@ -2393,11 +2393,16 @@ export default function App() {
               setShowProcess(false);
             }}
             onNext={(processedId) => {
+              // Cerrar modal brevemente para forzar remount
+              setShowProcess(false);
+              setEditItem(null);
               setTimeout(() => {
                 const remaining = allDocs.filter(i => i.type === "item" && i.bucket === "inbox" && !i.processed && i._id !== processedId);
-                if (remaining.length > 0) setEditItem(remaining[0]);
-                else { setShowProcess(false); setEditItem(null); }
-              }, 300);
+                if (remaining.length > 0) {
+                  setEditItem(remaining[0]);
+                  setShowProcess(true);
+                }
+              }, 150);
             }}
             onClose={() => { setShowProcess(false); setEditItem(null); setNewItemProjId(""); }} />
         )}
